@@ -49,6 +49,11 @@ impl Drop for EncryptionKey {
 }
 
 impl EncryptionKey {
+    /// Adopt a key already derived by the caller's key management mechanism.
+    pub fn from_derived_key(key: [u8; KEY_SIZE]) -> Self {
+        Self(key)
+    }
+
     pub fn from_password(password: &str, salt: &[u8; SALT_SIZE]) -> Result<Self, StorageError> {
         Ok(Self::derive(password, salt, PBKDF2_ROUNDS))
     }
