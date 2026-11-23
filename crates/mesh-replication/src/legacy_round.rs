@@ -10,9 +10,9 @@ use crate::session::ReconciliationSession;
 use std::collections::HashSet;
 use std::ops::Deref;
 
-const MAX_SYNC_ROUNDS: usize = 10_000;
-const MAX_REJECTED_DETAIL: usize = 64;
-const FILE_FOLLOWUP_BURST: usize = 4;
+pub const MAX_SYNC_ROUNDS: usize = 10_000;
+pub const MAX_REJECTED_DETAIL: usize = 64;
+pub const FILE_FOLLOWUP_BURST: usize = 4;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RoundFault {
