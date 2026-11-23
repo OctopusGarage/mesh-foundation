@@ -29,7 +29,7 @@ rejection.
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Planned. Account trust, enrollment and recovery policy belong to the application. |
 | `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Planned. Profile lifecycle belongs to the application. |
 | `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Planned. Online sessions and recipient delivery have separate semantics. |
-| `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Planned. Attachment consent and retention policy belong to the application. |
+| `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and integrity available. Resumable transfer pending. Attachment consent and retention policy belong to the application. |
 
 Replication owns its session and store contracts. A composition adapter binds a
 connection and a store to those contracts. The replication engine handles signed

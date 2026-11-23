@@ -419,6 +419,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
+name = "mesh-blob"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm 0.11.1",
+ "rand_core 0.6.4",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
 name = "mesh-connect"
 version = "0.1.0"
 dependencies = [
