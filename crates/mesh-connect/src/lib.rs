@@ -2,6 +2,7 @@
 
 pub mod frame;
 pub mod handshake;
+pub mod net;
 pub mod session;
 
 use frame::{read_frame, write_frame};

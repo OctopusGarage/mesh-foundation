@@ -23,7 +23,7 @@ rejection.
 
 | Package | Responsibility | Extraction status |
 | --- | --- | --- |
-| `mesh-connect` | Authenticated frame sessions, LAN discovery, route selection and connection lifecycle | Pinned-key sessions available. Discovery and routing pending. |
+| `mesh-connect` | Authenticated frame sessions, LAN discovery, route selection and connection lifecycle | Pinned-key sessions and LAN/IPv6 sockets available. Discovery messages and route selection pending. |
 | `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory and exact differences available. Session and store integration pending. |
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Mesh Talk ratchets available. Key distribution and application commits pending. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
