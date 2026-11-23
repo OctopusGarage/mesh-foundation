@@ -26,8 +26,8 @@ rejection.
 | `mesh-connect` | Authenticated frame sessions, LAN discovery, route selection and connection lifecycle | Pinned-key sessions available. Discovery and routing pending. |
 | `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory and exact differences available. Session and store integration pending. |
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Mesh Talk ratchets available. Key distribution and application commits pending. |
-| `mesh-identity` | Signing, credential verification, and separate node and author identities | Planned. Account trust, enrollment and recovery policy belong to the application. |
-| `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Planned. Profile lifecycle belongs to the application. |
+| `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
+| `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption available. Transaction adapters pending. Profile lifecycle belongs to the application. |
 | `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Planned. Online sessions and recipient delivery have separate semantics. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and integrity available. Resumable transfer pending. Attachment consent and retention policy belong to the application. |
 
