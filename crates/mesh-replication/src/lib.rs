@@ -74,16 +74,35 @@ impl Inventory {
         if self.ids.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(InventoryError::Duplicate);
         }
-        // Preserve Mesh Talk's digest of a unique ID set.
-        let mut digest = Sha256::new();
-        digest.update((self.ids.len() as u64).to_le_bytes());
+        let mut digest = InventoryDigest::new(self.ids.len() as u64);
         for id in &self.ids {
             digest.update(id);
         }
         Ok(CompleteInventory {
             ids: self.ids,
-            fingerprint: digest.finalize().into(),
+            fingerprint: digest.finish(),
         })
+    }
+}
+
+/// Streaming Mesh Talk-compatible digest for a finite, ordered inventory.
+/// The caller owns the snapshot and supplies exactly the declared number of
+/// IDs in lexicographic order. This type only computes a summary.
+pub struct InventoryDigest(Sha256);
+
+impl InventoryDigest {
+    pub fn new(count: u64) -> Self {
+        let mut digest = Sha256::new();
+        digest.update(count.to_le_bytes());
+        Self(digest)
+    }
+
+    pub fn update(&mut self, id: &EventId) {
+        self.0.update(id);
+    }
+
+    pub fn finish(self) -> [u8; 32] {
+        self.0.finalize().into()
     }
 }
 

@@ -53,3 +53,14 @@ fn duplicate_ids_cannot_qualify_for_digest_equality() {
     inventory.add_page(&[id(1)]).unwrap();
     assert_eq!(inventory.finish().err(), Some(InventoryError::Duplicate));
 }
+
+#[test]
+fn streaming_digest_preserves_the_legacy_wire_summary() {
+    let mut digest = mesh_replication::InventoryDigest::new(2);
+    digest.update(&id(1));
+    digest.update(&id(2));
+    assert_eq!(
+        hex::encode(digest.finish()),
+        "ddccdd95280c87eeeabcb482da5a6ab34d2a55081ba6960ad0fb894cef41c436",
+    );
+}
