@@ -148,3 +148,103 @@ mod tests {
         assert!(decode_frame(b"MTOM2").is_err());
     }
 }
+
+/// Qualify a delta response before its cursor can be considered for local commit.
+pub fn read_delta_response(
+    bytes: &[u8],
+    conversation: ConversationId,
+) -> Result<MailboxDeltaPage, RpcError> {
+    match decode_frame(bytes)? {
+        Frame::Page(page)
+            if page.cursor.conversation == conversation
+                && page.ids.len() <= PAGE_IDS
+                && page.complete == page.cursor.window.is_none()
+                && page.cursor.after >= 0
+                && page.cursor.revision >= 0
+                && page.cursor.epoch >= 0 =>
+        {
+            Ok(page)
+        }
+        _ => Err(RpcError::UnexpectedMessage),
+    }
+}
+
+pub fn make_get_request(
+    conversation: ConversationId,
+    cursor: &MailboxCursor,
+    ids: &[EventId],
+) -> Result<Vec<u8>, RpcError> {
+    if ids.len() > PAGE_IDS || cursor.conversation != conversation {
+        return Err(RpcError::UnexpectedMessage);
+    }
+    encode_frame(&Frame::Get {
+        conversation,
+        cursor: cursor.clone(),
+        ids: ids.to_vec(),
+    })
+}
+
+/// IDs and scope must match in order. Callers still authenticate each body
+/// and commit acceptance before advancing local progress.
+pub fn read_get_response(
+    bytes: &[u8],
+    conversation: ConversationId,
+    ids: &[EventId],
+    encoded_size: impl Fn(&Event) -> usize,
+) -> Result<Vec<Event>, RpcError> {
+    match decode_frame(bytes)? {
+        Frame::Events {
+            conversation: response,
+            events,
+        } if response == conversation
+            && events.len() == ids.len()
+            && events
+                .iter()
+                .zip(ids)
+                .all(|(event, id)| event.id == *id && event.conversation_id == conversation)
+            && events
+                .iter()
+                .try_fold(0usize, |sum, event| sum.checked_add(encoded_size(event)))
+                .is_some_and(|bytes| bytes <= BODY_BUDGET) =>
+        {
+            Ok(events)
+        }
+        _ => Err(RpcError::UnexpectedMessage),
+    }
+}
+
+#[cfg(test)]
+mod response_tests {
+    use super::*;
+    use mesh_identity::device::DeviceIdentity;
+    use mesh_replication::legacy_event::EventKind;
+
+    #[test]
+    fn body_response_must_match_requested_scope_identity_and_budget() {
+        let scope = ConversationId::new([7; 32]);
+        let error_scope = ConversationId::new([8; 32]);
+        let event = Event::new(
+            &DeviceIdentity::generate(),
+            scope,
+            1,
+            vec![],
+            1,
+            0,
+            EventKind::Message,
+            vec![5],
+        );
+        let id = event.id;
+        let bytes = encode_frame(&Frame::Events {
+            conversation: scope,
+            events: vec![event.clone()],
+        })
+        .unwrap();
+        assert_eq!(
+            read_get_response(&bytes, scope, &[id], |_| BODY_BUDGET).unwrap(),
+            [event]
+        );
+        assert!(read_get_response(&bytes, scope, &[id], |_| BODY_BUDGET + 1).is_err());
+        assert!(read_get_response(&bytes, error_scope, &[id], |_| 1).is_err());
+        assert!(read_get_response(&bytes, scope, &[EventId::new([4; 32])], |_| 1).is_err());
+    }
+}
