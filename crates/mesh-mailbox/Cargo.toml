@@ -1,0 +1,17 @@
+[package]
+name = "mesh-mailbox"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Opaque recipient-pair envelopes for Mesh Talk relay compatibility"
+
+[dependencies]
+aes-gcm = "0.11"
+bincode = "1.3"
+hkdf = "0.12"
+mesh-identity = { path = "../mesh-identity" }
+mesh-replication = { path = "../mesh-replication" }
+sha2 = "0.10"
+x25519-dalek = { version = "3", features = ["static_secrets", "getrandom"] }
+zeroize = "1"

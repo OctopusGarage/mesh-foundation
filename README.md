@@ -28,7 +28,7 @@ rejection.
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Mesh Talk ratchets available. Key distribution and application commits pending. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
 | `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption available. Transaction adapters pending. Profile lifecycle belongs to the application. |
-| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Planned. Online sessions and recipient delivery have separate semantics. |
+| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Pairwise and federated opaque envelope codecs available. Durable spooling, quota enforcement and relay orchestration pending. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and integrity available. Resumable transfer pending. Attachment consent and retention policy belong to the application. |
 
 Replication owns its session and store contracts. A composition adapter binds a
@@ -42,3 +42,7 @@ preserve existing wire formats, event IDs and persisted checkpoints. Validate
 packages through a forum consumer and existing Mesh Talk paths before publishing
 a stable interface. For encrypted content, preserve the atomic commit of an
 accepted event and its updated receive state across failures and restarts.
+
+The Mesh Talk-specific mailbox envelope uses the device identities in
+`mesh-identity` and the compatible signed event codec under
+`mesh-replication::legacy_event`. It can be carried by any suitable transport.

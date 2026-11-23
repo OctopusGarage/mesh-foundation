@@ -118,3 +118,6 @@ impl CompleteInventory {
         })
     }
 }
+
+/// Mesh Talk signed event compatibility codec.
+pub mod legacy_event;

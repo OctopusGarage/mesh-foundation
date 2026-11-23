@@ -516,9 +516,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesh-mailbox"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm 0.11.1",
+ "bincode",
+ "hkdf",
+ "mesh-identity",
+ "mesh-replication",
+ "sha2 0.10.9",
+ "x25519-dalek 3.0.0",
+ "zeroize",
+]
+
+[[package]]
 name = "mesh-replication"
 version = "0.1.0"
 dependencies = [
+ "bincode",
+ "hex",
+ "mesh-identity",
+ "serde",
  "sha2 0.10.9",
 ]
 
