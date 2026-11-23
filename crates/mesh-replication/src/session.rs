@@ -164,3 +164,148 @@ where
         yield_work().await;
     }
 }
+
+/// Limits on one outbound burst. Byte limits are expressed in the caller's
+/// wire encoding and in its decoded allocation accounting.
+pub struct ExportLimits {
+    pub frames: usize,
+    pub examined: usize,
+    pub events_per_frame: usize,
+    pub encoded_per_frame: usize,
+    pub allocated_per_frame: usize,
+}
+
+#[derive(Clone, Copy)]
+pub struct PageSpace {
+    pub examined: usize,
+    pub events: usize,
+    pub encoded_bytes: usize,
+    pub allocated_bytes: usize,
+}
+
+pub struct EventPage<Event, Cursor> {
+    pub events: Vec<Event>,
+    pub next: Option<Cursor>,
+    pub encoded_bytes: usize,
+    pub allocated_bytes: usize,
+    pub frame_finished: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExportError<E> {
+    Source(E),
+    PageTooSmall(E),
+    Limit,
+}
+
+pub type ExportResult<Event, Cursor, Error> = Result<EventPage<Event, Cursor>, ExportError<Error>>;
+
+pub trait ExportSource {
+    type Event;
+    type Cursor;
+    type Error;
+
+    /// On PageTooSmall, leave the cursor positioned before the first item
+    /// that could not fit so the next frame can retry that row.
+    fn page(
+        &mut self,
+        cursor: &mut Option<Self::Cursor>,
+        space: PageSpace,
+    ) -> ExportResult<Self::Event, Self::Cursor, Self::Error>;
+}
+
+/// Collect a bounded burst without holding source locks across a yield. The
+/// caller prepares the source and revalidates it before publishing each frame.
+pub async fn select_export_frames<S, Yield>(
+    source: &mut S,
+    limits: ExportLimits,
+    mut yield_work: impl FnMut() -> Yield,
+) -> Result<Vec<Vec<S::Event>>, ExportError<S::Error>>
+where
+    S: ExportSource,
+    Yield: Future<Output = ()>,
+{
+    if limits.frames == 0
+        || limits.examined == 0
+        || limits.events_per_frame == 0
+        || limits.encoded_per_frame == 0
+        || limits.allocated_per_frame == 0
+    {
+        return Err(ExportError::Limit);
+    }
+
+    let mut frames = Vec::new();
+    let mut cursor = None;
+    let mut frame = Vec::new();
+    let mut encoded = 0usize;
+    let mut allocated = 0usize;
+    loop {
+        let space = PageSpace {
+            examined: limits.examined,
+            events: limits
+                .events_per_frame
+                .checked_sub(frame.len())
+                .ok_or(ExportError::Limit)?,
+            encoded_bytes: limits
+                .encoded_per_frame
+                .checked_sub(encoded)
+                .ok_or(ExportError::Limit)?,
+            allocated_bytes: limits
+                .allocated_per_frame
+                .checked_sub(allocated)
+                .ok_or(ExportError::Limit)?,
+        };
+        if space.events == 0 || space.encoded_bytes == 0 || space.allocated_bytes == 0 {
+            frames.push(std::mem::take(&mut frame));
+            if frames.len() == limits.frames {
+                return Ok(frames);
+            }
+            encoded = 0;
+            allocated = 0;
+            continue;
+        }
+
+        let page = match source.page(&mut cursor, space) {
+            Ok(page) => page,
+            Err(ExportError::PageTooSmall(_)) if !frame.is_empty() => {
+                frames.push(std::mem::take(&mut frame));
+                if frames.len() == limits.frames {
+                    return Ok(frames);
+                }
+                encoded = 0;
+                allocated = 0;
+                yield_work().await;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+
+        encoded = encoded
+            .checked_add(page.encoded_bytes)
+            .ok_or(ExportError::Limit)?;
+        allocated = allocated
+            .checked_add(page.allocated_bytes)
+            .ok_or(ExportError::Limit)?;
+        if page.events.len() > space.events
+            || allocated > limits.allocated_per_frame
+            || (encoded > limits.encoded_per_frame && !page.frame_finished)
+        {
+            return Err(ExportError::Limit);
+        }
+        cursor = page.next;
+        frame.extend(page.events);
+        let eof = cursor.is_none();
+        if !frame.is_empty() && (page.frame_finished || eof) {
+            frames.push(std::mem::take(&mut frame));
+            if frames.len() == limits.frames {
+                return Ok(frames);
+            }
+            encoded = 0;
+            allocated = 0;
+        }
+        if eof {
+            return Ok(frames);
+        }
+        yield_work().await;
+    }
+}

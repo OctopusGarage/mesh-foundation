@@ -194,3 +194,63 @@ async fn rechecks_authority_before_sending_even_an_empty_terminal() {
     );
     assert!(writer.0.is_empty());
 }
+
+struct ExportFixture(VecDeque<u8>);
+
+impl ExportSource for ExportFixture {
+    type Event = u8;
+    type Cursor = usize;
+    type Error = &'static str;
+
+    fn page(
+        &mut self,
+        cursor: &mut Option<usize>,
+        space: PageSpace,
+    ) -> Result<EventPage<u8, usize>, ExportError<Self::Error>> {
+        let event = *self.0.front().ok_or(ExportError::Source("no row"))?;
+        let charge = usize::from(event);
+        if charge > space.encoded_bytes {
+            return Err(ExportError::PageTooSmall("record does not fit"));
+        }
+        self.0.pop_front();
+        Ok(EventPage {
+            events: vec![event],
+            next: (!self.0.is_empty()).then(|| cursor.unwrap_or(0) + 1),
+            encoded_bytes: charge,
+            allocated_bytes: charge,
+            frame_finished: false,
+        })
+    }
+}
+
+fn export_limits() -> ExportLimits {
+    ExportLimits {
+        frames: 2,
+        examined: 2,
+        events_per_frame: 2,
+        encoded_per_frame: 5,
+        allocated_per_frame: 16,
+    }
+}
+
+#[tokio::test]
+async fn export_retries_the_unselected_row_in_the_next_frame() {
+    let mut source = ExportFixture([3, 4, 2].into());
+    let frames = select_export_frames(&mut source, export_limits(), || std::future::ready(()))
+        .await
+        .unwrap();
+    assert_eq!(frames, [vec![3], vec![4]]);
+    assert_eq!(source.0.front(), Some(&2));
+}
+
+#[tokio::test]
+async fn export_returns_the_source_error_when_one_row_does_not_fit() {
+    let mut source = ExportFixture([8].into());
+    let result =
+        select_export_frames(&mut source, export_limits(), || std::future::ready(())).await;
+    assert_eq!(
+        result,
+        Err(ExportError::PageTooSmall("record does not fit"))
+    );
+    assert_eq!(source.0.front(), Some(&8));
+}
