@@ -18,7 +18,8 @@ mod checkpoint;
 
 /// Max messages a receiver will skip forward in one sender's chain (DoS bound) and
 /// the total buffered skipped keys.
-pub(crate) const MAX_SKIP: u32 = 1000;
+/// Maximum forward gap accepted on a single sender-key receive step.
+pub const MAX_SKIP: u32 = 1000;
 const MAX_SKIPPED_TOTAL: usize = 2000;
 
 #[derive(Debug)]
