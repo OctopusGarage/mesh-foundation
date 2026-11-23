@@ -1,6 +1,8 @@
 //! At-rest encryption for existing Mesh Talk records.
 //! Database transactions and key lifecycle belong to the caller.
 
+pub mod record_log;
+
 #[derive(Debug)]
 pub enum StorageError {
     Encryption(String),
