@@ -624,6 +624,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "hex",
+ "log",
  "mesh-identity",
  "serde",
  "sha2 0.10.9",

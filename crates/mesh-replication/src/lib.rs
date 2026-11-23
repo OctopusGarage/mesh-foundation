@@ -146,3 +146,6 @@ pub mod session;
 
 /// Mesh Talk-compatible synchronization frame codec.
 pub mod legacy_wire;
+
+/// Requester engine for Mesh Talk-compatible sync rounds.
+pub mod legacy_round;
