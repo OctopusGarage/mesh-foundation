@@ -140,3 +140,6 @@ impl CompleteInventory {
 
 /// Mesh Talk signed event compatibility codec.
 pub mod legacy_event;
+
+/// Transport-independent framed reconciliation.
+pub mod session;
