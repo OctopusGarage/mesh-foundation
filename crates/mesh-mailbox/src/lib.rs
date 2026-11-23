@@ -454,3 +454,6 @@ pub mod delta;
 
 /// Authorized mailbox delta request dispatch.
 pub mod service;
+
+/// Durable bounded spool for mailbox hosts.
+pub mod spool;

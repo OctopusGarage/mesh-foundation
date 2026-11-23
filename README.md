@@ -13,8 +13,8 @@ Talk. The SDK's pinned-key profile is for new applications. It does not
 implement Mesh Talk's application handshake or wire protocol.
 
 `mesh-replication` provides bounded ID inventory assembly, canonical digests,
-and exact set differences. It is independent of `mesh-connect`. Session
-orchestration, authorization adapters and application integration are pending.
+and exact set differences. It is independent of `mesh-connect`. It also includes the requester and responder for the existing Mesh Talk wire protocol.
+Callers supply the current authorized store and authenticated session.
 
 Run `cargo test --workspace` to exercise real loopback TCP and peer-key
 rejection.
@@ -24,11 +24,11 @@ rejection.
 | Package | Responsibility | Extraction status |
 | --- | --- | --- |
 | `mesh-connect` | Authenticated frame sessions, LAN discovery, route selection and connection lifecycle | Pinned-key sessions and LAN/IPv6 sockets available. Discovery messages and route selection pending. |
-| `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory and exact differences available. Session and store integration pending. |
+| `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory, exact differences, bounded requester and responder, and legacy wire codec available. Applications supply authorized persistence via adapters. |
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Mesh Talk ratchets available. Key distribution and application commits pending. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
 | `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption and durable append/rewrite available. Indexed transaction adapters pending. Profile lifecycle belongs to the application. |
-| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Pairwise and federated opaque envelope codecs available. Durable spooling, quota enforcement and relay orchestration pending. |
+| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Opaque envelopes, negotiated delta requests, quota policy and durable per-mailbox spool available. Hosts own admission, expiry scheduling and federation. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and integrity available. Resumable transfer pending. Attachment consent and retention policy belong to the application. |
 
 Replication owns its session and store contracts. A composition adapter binds a
