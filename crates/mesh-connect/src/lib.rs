@@ -30,10 +30,14 @@ pub enum TransportError {
     PlaintextTooLarge(usize),
     /// Handshake ended without a peer static key.
     MissingRemoteStatic,
+    /// Identity auth failed (bad signature or static-key mismatch).
+    IdentityMismatch,
     /// Authenticated peer was not the one the caller expected.
     UnexpectedPeer,
     /// The host's admission policy rejected the verified caller.
     AdmissionDenied,
+    /// (De)serialization of the auth payload failed.
+    Serialization(String),
 }
 
 impl std::fmt::Display for TransportError {
@@ -46,10 +50,12 @@ impl std::fmt::Display for TransportError {
             TransportError::MissingRemoteStatic => {
                 write!(f, "handshake produced no remote static key")
             }
+            TransportError::IdentityMismatch => write!(f, "peer identity authentication failed"),
             TransportError::UnexpectedPeer => {
                 write!(f, "authenticated peer was not the expected one")
             }
             TransportError::AdmissionDenied => write!(f, "peer admission denied"),
+            TransportError::Serialization(m) => write!(f, "serialization error: {m}"),
         }
     }
 }

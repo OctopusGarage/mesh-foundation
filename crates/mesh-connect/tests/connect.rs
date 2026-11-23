@@ -45,3 +45,14 @@ async fn wrong_responder_key_aborts_before_client_static_key_is_sent() {
     assert!(matches!(outgoing, Err(TransportError::UnexpectedPeer)));
     assert!(matches!(incoming, Err(TransportError::Io(_))));
 }
+
+#[tokio::test]
+async fn oversized_outbound_frame_is_rejected_before_writing() {
+    use mesh_connect::{MAX_FRAME, frame};
+    let mut output = Vec::new();
+    let error = frame::write_frame(&mut output, &vec![0; MAX_FRAME + 1])
+        .await
+        .unwrap_err();
+    assert!(matches!(error, TransportError::FrameTooLarge(n) if n == MAX_FRAME + 1));
+    assert!(output.is_empty());
+}

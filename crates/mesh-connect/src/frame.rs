@@ -6,6 +6,9 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     w: &mut W,
     blob: &[u8],
 ) -> Result<(), TransportError> {
+    if blob.len() > MAX_FRAME {
+        return Err(TransportError::FrameTooLarge(blob.len()));
+    }
     let len = blob.len() as u32;
     w.write_all(&len.to_be_bytes()).await?;
     w.write_all(blob).await?;
