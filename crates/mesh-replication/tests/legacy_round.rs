@@ -1,4 +1,5 @@
 use mesh_identity::device::DeviceIdentity;
+use mesh_replication::legacy_round::{ResponderBackend, serve};
 use mesh_replication::{
     legacy_event::{ConversationId, Event, EventId, EventKind},
     legacy_round::{
@@ -39,6 +40,7 @@ impl ReconciliationSession for Connection {
 struct Replica {
     fingerprint: Option<[u8; 32]>,
     accepted: RefCell<HashSet<EventId>>,
+    exports: Vec<Event>,
 }
 impl RoundBackend<RoundFault> for Replica {
     type Peer = ();
@@ -110,11 +112,15 @@ impl RoundBackend<RoundFault> for Replica {
         &self,
         session: &mut impl ReconciliationSession<Peer = (), Error = RoundFault>,
         scope: ConversationId,
+        requester: bool,
         _: bool,
     ) -> Result<Self::RemoteHave, RoundFault> {
         let bytes = session.recv().await?;
         match legacy_wire::decode(&bytes).map_err(RoundFault::Wire)? {
-            SyncWire::RespHave(page) if page.conversation == scope && !page.more => {
+            SyncWire::ReqHave(page) if requester && page.conversation == scope && !page.more => {
+                Ok(Box::new(page.ids.into_iter().collect()))
+            }
+            SyncWire::RespHave(page) if !requester && page.conversation == scope && !page.more => {
                 Ok(Box::new(page.ids.into_iter().collect()))
             }
             _ => Err(RoundFault::UnexpectedMessage),
@@ -150,11 +156,24 @@ impl RoundBackend<RoundFault> for Replica {
     async fn select_export_frames(
         &self,
         _: &(),
-        _: ConversationId,
-        _: &Self::RemoteHave,
+        scope: ConversationId,
+        have: &Self::RemoteHave,
         _: usize,
     ) -> Result<Vec<SyncFollowup>, RoundFault> {
-        Ok(vec![])
+        let events = self
+            .exports
+            .iter()
+            .filter(|event| !have.contains(&event.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        Ok(if events.is_empty() {
+            vec![]
+        } else {
+            vec![SyncFollowup {
+                conversation: scope,
+                events,
+            }]
+        })
     }
 }
 
@@ -247,5 +266,73 @@ async fn a_reconnected_requester_advertises_the_event_already_committed() {
     assert!(
         matches!(&sent[..], [SyncWire::Request(_), SyncWire::ReqHave(have), SyncWire::Followup(_)]
         if have.ids == [event.id] && !have.more)
+    );
+}
+
+impl ResponderBackend<RoundFault> for Replica {
+    fn metadata(&self, _: &()) -> Result<SyncMetadata, RoundFault> {
+        Ok(SyncMetadata {
+            count: self.accepted.borrow().len() as u64,
+            ..SyncMetadata::default()
+        })
+    }
+
+    fn durable_have_in_view(
+        &self,
+        _: &(),
+        _: &ConversationId,
+        id: &EventId,
+    ) -> Result<bool, RoundFault> {
+        Ok(self.accepted.borrow().contains(id))
+    }
+}
+
+#[tokio::test]
+async fn responder_exports_only_missing_ids_and_finishes_its_inventory() {
+    use mesh_replication::legacy_wire::SyncRequest;
+
+    let scope = ConversationId::new([7; 32]);
+    let author = DeviceIdentity::generate();
+    let first = Event::new(&author, scope, 1, vec![], 1, 0, EventKind::Message, vec![1]);
+    let missed = Event::new(
+        &author,
+        scope,
+        2,
+        vec![first.id],
+        2,
+        0,
+        EventKind::Message,
+        vec![2],
+    );
+    let replica = Replica {
+        exports: vec![first.clone(), missed.clone()],
+        accepted: RefCell::new([first.id, missed.id].into_iter().collect()),
+        ..Replica::default()
+    };
+    let mut channel = incoming([SyncWire::ReqHave(HaveChunk {
+        conversation: scope,
+        ids: vec![first.id],
+        more: false,
+    })]);
+    let request = legacy_wire::encode(&SyncWire::Request(SyncRequest {
+        conversation: scope,
+        have: vec![],
+    }))
+    .unwrap();
+    assert_eq!(serve(&mut channel, &replica, &request).await, Ok(scope));
+    let frames = channel
+        .sent
+        .into_iter()
+        .map(|bytes| legacy_wire::decode(&bytes).unwrap())
+        .collect::<Vec<_>>();
+    let [SyncWire::Response(response), SyncWire::RespHave(have)] = frames.as_slice() else {
+        panic!("expected response and Have")
+    };
+    assert_eq!(response.events.as_slice(), std::slice::from_ref(&missed));
+    assert!(response.have.is_empty());
+    assert!(!have.more);
+    assert_eq!(
+        have.ids.iter().copied().collect::<HashSet<_>>(),
+        HashSet::from([first.id, missed.id])
     );
 }

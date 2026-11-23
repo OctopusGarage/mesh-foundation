@@ -6,6 +6,7 @@ use crate::legacy_event::{ConversationId, Event, EventId, EventKind};
 use crate::legacy_wire::{
     self, FpRequest, FpResponse, HaveChunk, SyncFollowup, SyncRequest, SyncWire,
 };
+use crate::legacy_wire::{FileConsentStatus, SyncResponse};
 use crate::session::ReconciliationSession;
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -102,6 +103,7 @@ pub trait RoundBackend<E> {
         &self,
         session: &mut impl ReconciliationSession<Peer = Self::Peer, Error = E>,
         conversation: ConversationId,
+        requester: bool,
         compare: bool,
     ) -> Result<Self::RemoteHave, E>;
     async fn intersection_count(
@@ -346,6 +348,7 @@ impl SyncProgress {
             .receive_have(
                 channel,
                 conversation,
+                false,
                 comparison_token.is_some() && self.received_wire_total == 0,
             )
             .await?;
@@ -499,5 +502,307 @@ impl SyncProgress {
         // Repeated queries reuse preparation without retaining historical bodies.
         drop(backend.retain_custody_view(outgoing_view)?);
         Ok(complete)
+    }
+}
+
+/// Serving extensions. Attachment hooks are optional and must enforce the
+/// caller's current scope; defaults publish no product-specific controls.
+pub trait ResponderBackend<E>: RoundBackend<E> {
+    fn take_custody_view(&self, _scope: &ConversationId) -> Result<Option<Self::View>, E> {
+        Ok(None)
+    }
+    fn metadata(&self, view: &Self::View) -> Result<SyncMetadata, E>;
+    fn durable_have_in_view(
+        &self,
+        view: &Self::View,
+        scope: &ConversationId,
+        id: &EventId,
+    ) -> Result<bool, E>;
+    fn file_message_identity(
+        &self,
+        _file: &ConversationId,
+        _id: &EventId,
+    ) -> Result<Option<Event>, E> {
+        Ok(None)
+    }
+    fn accept_file_message_identity(&self, _event: Event) -> Result<bool, E> {
+        Ok(false)
+    }
+    fn sticker_file_proof(
+        &self,
+        _file: &ConversationId,
+        _id: &EventId,
+    ) -> Result<Option<Vec<Event>>, E> {
+        Ok(None)
+    }
+    fn sticker_file_consent(
+        &self,
+        _file: &ConversationId,
+        _id: &EventId,
+        _headers: Vec<Event>,
+    ) -> Result<Option<Event>, E> {
+        Ok(None)
+    }
+    fn signed_file_consent(
+        &self,
+        _file: &ConversationId,
+        _id: &EventId,
+    ) -> Result<Option<Event>, E> {
+        Ok(None)
+    }
+    fn file_consent(&self, _file: &ConversationId, _id: &EventId) -> Result<FileConsentStatus, E> {
+        Ok(FileConsentStatus::Pending)
+    }
+}
+
+pub const MAX_FILE_IDENTITIES: usize = 8;
+
+fn unsupported_metadata(m: SyncMetadata, v2: bool, v3: bool, v4: bool, v5: bool) -> bool {
+    (!v2 && m.channel_v2) || (!v3 && m.channel_v3) || (!v4 && m.channel_v4) || (!v5 && m.channel_v5)
+}
+
+pub async fn serve<B, S, E>(channel: &mut S, backend: &B, bytes: &[u8]) -> Result<ConversationId, E>
+where
+    B: ResponderBackend<E>,
+    S: ReconciliationSession<Peer = B::Peer, Error = E>,
+    E: From<RoundFault>,
+{
+    backend.bind_session_peer(channel.peer_identity());
+    match decode_frame(bytes)? {
+        SyncWire::FileMessageIdentitiesRequest { requests, offers } => {
+            if requests.len() > MAX_FILE_IDENTITIES || offers.len() > MAX_FILE_IDENTITIES {
+                return Err(RoundFault::UnexpectedMessage.into());
+            }
+            let conversation = requests
+                .first()
+                .map(|(file, _)| *file)
+                .or_else(|| offers.first().map(|event| event.conversation_id))
+                .unwrap_or(ConversationId::new([0; 32]));
+            for bundle in offers {
+                backend.accept_file_message_identity(bundle)?;
+            }
+            let mut seen = std::collections::HashSet::new();
+            let mut bundles = Vec::new();
+            for (file, manifest) in requests {
+                if let Some(bundle) = backend.file_message_identity(&file, &manifest)?
+                    && seen.insert(bundle.id)
+                {
+                    bundles.push(bundle);
+                }
+            }
+            channel
+                .send(&encode_frame(&SyncWire::FileMessageIdentitiesResponse {
+                    bundles,
+                })?)
+                .await?;
+            Ok(conversation)
+        }
+        SyncWire::StickerFileProofRequest { file, manifest } => {
+            let headers = backend.sticker_file_proof(&file, &manifest)?;
+            channel
+                .send(&encode_frame(&SyncWire::StickerFileProofResponse {
+                    file,
+                    manifest,
+                    headers,
+                })?)
+                .await?;
+            Ok(file)
+        }
+        SyncWire::StickerFileConsentRequest {
+            file,
+            manifest,
+            headers,
+        } => {
+            let control = if headers.len() <= 64
+                && headers.iter().all(|event| {
+                    event.ciphertext.is_empty() && event.parents.len() <= 1 && event.sig.len() == 64
+                }) {
+                backend.sticker_file_consent(&file, &manifest, headers)?
+            } else {
+                None
+            };
+            channel
+                .send(&encode_frame(&SyncWire::StickerFileConsentResponse {
+                    file,
+                    manifest,
+                    control,
+                })?)
+                .await?;
+            Ok(file)
+        }
+        SyncWire::SignedFileConsentRequest { file, manifest } => {
+            let control = backend.signed_file_consent(&file, &manifest)?;
+            channel
+                .send(&encode_frame(&SyncWire::SignedFileConsentResponse {
+                    file,
+                    manifest,
+                    control,
+                })?)
+                .await?;
+            Ok(file)
+        }
+        SyncWire::FileConsentRequest { file, manifest } => {
+            let status = backend.file_consent(&file, &manifest)?;
+            channel
+                .send(&encode_frame(&SyncWire::FileConsentResponse {
+                    file,
+                    manifest,
+                    status,
+                })?)
+                .await?;
+            Ok(file)
+        }
+        SyncWire::DurableHaveRequest {
+            conversation,
+            event_id,
+        } => {
+            let view = match backend.take_custody_view(&conversation)? {
+                Some(view) => view,
+                None => backend.open_prepared_view(&conversation).await?,
+            };
+            let stored = backend.durable_have_in_view(&view, &conversation, &event_id)?;
+            backend.validate_view(&view)?;
+            let uncached_view = backend.retain_custody_view(view)?;
+            channel
+                .send(&encode_frame(&SyncWire::DurableHaveResponse {
+                    conversation,
+                    event_id,
+                    stored,
+                })?)
+                .await?;
+            drop(uncached_view);
+            Ok(conversation)
+        }
+        SyncWire::Request(request)
+        | SyncWire::RequestV2(request)
+        | SyncWire::RequestV3(request)
+        | SyncWire::RequestV4(request)
+        | SyncWire::RequestV5(request) => {
+            let conversation = request.conversation;
+            let v5 = matches!(decode_frame(bytes)?, SyncWire::RequestV5(_));
+            let v4 = v5 || matches!(decode_frame(bytes)?, SyncWire::RequestV4(_));
+            let v3 = v4 || matches!(decode_frame(bytes)?, SyncWire::RequestV3(_));
+            let v2 = v3 || matches!(decode_frame(bytes)?, SyncWire::RequestV2(_));
+            // The Request's inline have is empty on the networked path; read the
+            // requester's streamed have, then answer.
+            let have = backend
+                .receive_have(channel, conversation, true, false)
+                .await?;
+            // Transfer the existing connection-owned lease before awaiting.
+            // Incomplete responses drop it; only a fully sent response is retained.
+            let view = match backend.take_custody_view(&conversation)? {
+                Some(view) => view,
+                None => backend.open_prepared_view(&conversation).await?,
+            };
+            let metadata = backend.metadata(&view)?;
+            backend.have_count(metadata.count)?;
+            let response = if unsupported_metadata(metadata, v2, v3, v4, v5) {
+                None
+            } else {
+                let mut frames = backend
+                    .select_export_frames(&view, conversation, &have, 1)
+                    .await?;
+                let events = frames.pop().map_or_else(Vec::new, |frame| frame.events);
+                events
+                    .iter()
+                    .all(|event| supports_event_kind(event.kind, v2, v3, v4, v5))
+                    .then_some(events)
+            };
+            let Some(response) = response else {
+                channel
+                    .send(&encode_frame(&SyncWire::UpgradeRequired { conversation })?)
+                    .await?;
+                return Ok(conversation);
+            };
+            backend.validate_view(&view)?;
+            channel
+                .send(&encode_frame(&SyncWire::Response(SyncResponse {
+                    conversation,
+                    events: response,
+                    have: Vec::new(),
+                }))?)
+                .await?;
+            backend
+                .send_have_pages(channel, &view, conversation, SyncWire::RespHave)
+                .await?;
+            drop(backend.retain_custody_view(view)?);
+            Ok(conversation)
+        }
+        SyncWire::Followup(followup)
+        | SyncWire::FollowupV2(followup)
+        | SyncWire::FollowupV3(followup)
+        | SyncWire::FollowupV4(followup)
+        | SyncWire::FollowupV5(followup) => {
+            let conversation = followup.conversation;
+            let v5 = matches!(decode_frame(bytes)?, SyncWire::FollowupV5(_));
+            let v4 = v5 || matches!(decode_frame(bytes)?, SyncWire::FollowupV4(_));
+            let v3 = v4 || matches!(decode_frame(bytes)?, SyncWire::FollowupV3(_));
+            let v2 = v3 || matches!(decode_frame(bytes)?, SyncWire::FollowupV2(_));
+            if followup.events.iter().any(|event| {
+                event.conversation_id != conversation
+                    || !supports_event_kind(event.kind, v2, v3, v4, v5)
+            }) {
+                return Err(RoundFault::UnexpectedMessage.into());
+            }
+            backend.apply(&followup.events)?;
+            if backend.admission_denied() {
+                return Err(RoundFault::UnexpectedMessage.into());
+            }
+            Ok(conversation)
+        }
+        SyncWire::FpRequest(req)
+        | SyncWire::FpRequestV2(req)
+        | SyncWire::FpRequestV3(req)
+        | SyncWire::FpRequestV4(req)
+        | SyncWire::FpRequestV5(req) => {
+            // Compare the requester's whole-set digest to ours. On match the requester
+            // skips the full exchange; on mismatch it follows up with a normal Request.
+            let conversation = req.conversation;
+            let v5 = matches!(decode_frame(bytes)?, SyncWire::FpRequestV5(_));
+            let v4 = v5 || matches!(decode_frame(bytes)?, SyncWire::FpRequestV4(_));
+            let v3 = v4 || matches!(decode_frame(bytes)?, SyncWire::FpRequestV3(_));
+            let v2 = v3 || matches!(decode_frame(bytes)?, SyncWire::FpRequestV2(_));
+            let (metadata, probe_view) = backend.prepared_probe(&conversation).await?;
+            let matched = if unsupported_metadata(metadata, v2, v3, v4, v5) {
+                None
+            } else {
+                Some(metadata.fingerprint.is_some_and(|fp| fp == req.fingerprint))
+            };
+            let Some(matched) = matched else {
+                channel
+                    .send(&encode_frame(&SyncWire::UpgradeRequired { conversation })?)
+                    .await?;
+                return Ok(conversation);
+            };
+            if let Some(view) = &probe_view {
+                backend.validate_view(view)?;
+            }
+            channel
+                .send(&encode_frame(&SyncWire::FpResponse(FpResponse {
+                    matched,
+                }))?)
+                .await?;
+            if let Some(view) = probe_view {
+                // The response completed this probe, not the local view's
+                // useful lifetime. A following ordinary Request may reuse it.
+                backend.validate_view(&view)?;
+                drop(backend.retain_custody_view(view)?);
+            }
+            Ok(conversation)
+        }
+        // A Response/FpResponse, or a stray have-chunk outside its stream, is out of order.
+        SyncWire::Response(_)
+        | SyncWire::ReqHave(_)
+        | SyncWire::RespHave(_)
+        | SyncWire::FpResponse(_)
+        | SyncWire::UpgradeRequired { .. } => Err(RoundFault::UnexpectedMessage.into()),
+        SyncWire::DurableHaveResponse { .. }
+        | SyncWire::FileConsentResponse { .. }
+        | SyncWire::SignedFileConsentResponse { .. }
+        | SyncWire::StickerFileConsentResponse { .. }
+        | SyncWire::StickerFileProofResponse { .. }
+        | SyncWire::FileMessageIdentitiesResponse { .. } => {
+            Err(RoundFault::UnexpectedMessage.into())
+        }
     }
 }
