@@ -143,3 +143,6 @@ pub mod legacy_event;
 
 /// Transport-independent framed reconciliation.
 pub mod session;
+
+/// Mesh Talk-compatible synchronization frame codec.
+pub mod legacy_wire;
