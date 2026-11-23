@@ -42,7 +42,7 @@ impl QueryTracker {
             .map(|(announce, _)| announce)
     }
 
-    pub(crate) fn accept_with_latency(
+    pub fn accept_with_latency(
         &mut self,
         ip: IpAddr,
         bytes: &[u8],

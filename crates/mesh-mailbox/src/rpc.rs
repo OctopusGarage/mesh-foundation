@@ -114,6 +114,11 @@ pub fn encode_frame(frame: &Frame) -> Result<Vec<u8>, RpcError> {
     Ok(result)
 }
 
+/// Identify the mailbox protocol prefix before selecting its decoder.
+pub fn is_mailbox_frame(bytes: &[u8]) -> bool {
+    bytes.starts_with(MAGIC)
+}
+
 pub fn decode_frame(bytes: &[u8]) -> Result<Frame, RpcError> {
     if bytes.len() > MAX_PLAINTEXT || !bytes.starts_with(MAGIC) {
         return Err(RpcError::UnexpectedMessage);
