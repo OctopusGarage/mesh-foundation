@@ -81,9 +81,9 @@ pub struct EncryptedRecordLog<R> {
     // Retain a separate handle to the same file for repair, never reopen by path.
     #[cfg(windows)]
     repair: File,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-observability"))]
     append_fault: Option<File>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-observability"))]
     append_rollback_fault: Option<usize>,
     key: EncryptionKey,
     salt: [u8; SALT_SIZE],
@@ -95,14 +95,14 @@ pub struct EncryptedRecordLog<R> {
     needs_sync: AtomicBool,
     // Confirmed prefix before an append whose rollback could not finish.
     rollback_boundary: u64,
-    #[cfg(test)]
-    pub(crate) before_rewrite_rename: Option<Box<dyn FnOnce() + Send + Sync>>,
+    #[cfg(any(test, feature = "test-observability"))]
+    pub before_rewrite_rename: Option<Box<dyn FnOnce() + Send + Sync>>,
     _marker: PhantomData<R>,
 }
 
 impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
-    #[cfg(test)]
-    pub(crate) fn fail_appends_for_test(&mut self, enabled: bool) -> std::io::Result<()> {
+    #[cfg(any(test, feature = "test-observability"))]
+    pub fn fail_appends_for_test(&mut self, enabled: bool) -> std::io::Result<()> {
         self.append_fault = if enabled {
             Some(File::open(&self.path)?)
         } else {
@@ -110,8 +110,8 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         };
         Ok(())
     }
-    #[cfg(test)]
-    pub(crate) fn fail_next_append_rollback_for_test(&mut self, bytes: usize) {
+    #[cfg(any(test, feature = "test-observability"))]
+    pub fn fail_next_append_rollback_for_test(&mut self, bytes: usize) {
         self.append_rollback_fault = Some(bytes);
     }
     /// Open the log at `path`, creating it (with a fresh random salt and `magic`
@@ -143,6 +143,22 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         magic: &[u8; 6],
         visit: impl FnMut(R) -> Result<(), RecordLogError>,
     ) -> Result<Self, RecordLogError> {
+        Self::open_with_key_and_visitor(
+            path,
+            magic,
+            |salt| EncryptionKey::from_password(password, salt),
+            visit,
+        )
+    }
+
+    /// Open with the caller's key provider and the same streaming replay rules.
+    /// The provider receives the stored salt, or the fresh salt for a new log.
+    pub fn open_with_key_and_visitor(
+        path: &Path,
+        magic: &[u8; 6],
+        derive: impl FnOnce(&[u8; SALT_SIZE]) -> Result<EncryptionKey, crate::StorageError>,
+        visit: impl FnMut(R) -> Result<(), RecordLogError>,
+    ) -> Result<Self, RecordLogError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -158,7 +174,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                 #[cfg(windows)]
                 let repair = OpenOptions::new().write(true).open(path)?;
                 let salt = generate_salt();
-                let key = EncryptionKey::from_password(password, &salt)?;
+                let key = derive(&salt)?;
                 file.write_all(magic)?;
                 file.write_all(&salt)?;
                 sync_file(&file)?;
@@ -167,9 +183,9 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                     file,
                     #[cfg(windows)]
                     repair,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-observability"))]
                     append_fault: None,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-observability"))]
                     append_rollback_fault: None,
                     key,
                     salt,
@@ -178,13 +194,13 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                     poisoned: false,
                     needs_sync: AtomicBool::new(false),
                     rollback_boundary: 0,
-                    #[cfg(test)]
+                    #[cfg(any(test, feature = "test-observability"))]
                     before_rewrite_rename: None,
                     _marker: PhantomData,
                 })
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                Self::load(path, password, magic, visit)
+                Self::load(path, magic, derive, visit)
             }
             Err(e) => Err(e.into()),
         }
@@ -192,8 +208,8 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
 
     fn load(
         path: &Path,
-        password: &str,
         magic: &[u8; 6],
+        derive: impl FnOnce(&[u8; SALT_SIZE]) -> Result<EncryptionKey, crate::StorageError>,
         visit: impl FnMut(R) -> Result<(), RecordLogError>,
     ) -> Result<Self, RecordLogError> {
         let mut file = OpenOptions::new().read(true).append(true).open(path)?;
@@ -208,7 +224,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         let mut salt = [0u8; SALT_SIZE];
         file.read_exact(&mut salt)
             .map_err(|_| RecordLogError::CorruptFile("missing salt".into()))?;
-        let key = EncryptionKey::from_password(password, &salt)?;
+        let key = derive(&salt)?;
 
         let body_len = file.metadata()?.len() - (6 + SALT_SIZE) as u64;
         let valid = Self::parse_records(&mut BufReader::new(&mut file), body_len, &key, visit)?;
@@ -224,9 +240,9 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             file,
             #[cfg(windows)]
             repair,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             append_fault: None,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             append_rollback_fault: None,
             key,
             salt,
@@ -237,7 +253,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             // does not establish its durability for this reopened owner.
             needs_sync: AtomicBool::new(true),
             rollback_boundary: 0,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             before_rewrite_rename: None,
             _marker: PhantomData,
         })
@@ -269,7 +285,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                 ));
             }
             record.resize(len, 0);
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             frame_observations::record_capacity(record.capacity());
             reader.read_exact(&mut record)?;
             let nonce: [u8; NONCE_SIZE] = record[..NONCE_SIZE]
@@ -366,9 +382,9 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         // Failed writes and successful rollback still require a later complete
         // file-and-parent confirmation before this prefix can be called durable.
         self.needs_sync.store(true, Ordering::Release);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-observability"))]
         let append_rollback_fault = self.append_rollback_fault.take();
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-observability"))]
         let write_result = if let Some(bytes) = append_rollback_fault {
             self.file
                 .write_all(&buf[..bytes.min(buf.len())])
@@ -379,7 +395,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                 None => write(&mut self.file, &buf),
             }
         };
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-observability")))]
         let write_result = write(&mut self.file, &buf);
         let result = write_result.and_then(|()| {
             if durable {
@@ -393,13 +409,13 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             let repair_file = &self.repair;
             #[cfg(not(windows))]
             let repair_file = &self.file;
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             let readonly_repair = if append_rollback_fault.is_some() {
                 Some(File::open(&self.path)?)
             } else {
                 None
             };
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-observability"))]
             let repair_file = readonly_repair.as_ref().unwrap_or(repair_file);
             if repair_file
                 .set_len(boundary)
@@ -449,7 +465,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         let f = OpenOptions::new().read(true).append(true).open(&tmp)?;
         #[cfg(windows)]
         let repair = OpenOptions::new().write(true).open(&tmp)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-observability"))]
         if let Some(hook) = self.before_rewrite_rename.take() {
             hook();
         }
@@ -506,7 +522,7 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         let file = OpenOptions::new().read(true).append(true).open(&tmp)?;
         #[cfg(windows)]
         let repair = OpenOptions::new().write(true).open(&tmp)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-observability"))]
         if let Some(hook) = self.before_rewrite_rename.take() {
             hook();
         }
@@ -527,13 +543,13 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
 }
 
 fn sync_file(file: &File) -> std::io::Result<()> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-observability"))]
     sync_observations::before_file()?;
     file.sync_all()
 }
 
 fn sync_parent(path: &Path) -> std::io::Result<()> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-observability"))]
     sync_observations::before_parent()?;
     #[cfg(unix)]
     {
@@ -548,26 +564,26 @@ fn sync_parent(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) mod sync_observations {
+#[cfg(any(test, feature = "test-observability"))]
+pub mod sync_observations {
     use std::cell::Cell;
     thread_local! {
         static COUNTS: Cell<(usize,usize)> = const { Cell::new((0,0)) };
         static FAIL_FILE: Cell<bool> = const { Cell::new(false) };
         static FAIL_PARENT: Cell<bool> = const { Cell::new(false) };
     }
-    pub(crate) fn reset() {
+    pub fn reset() {
         COUNTS.with(|value| value.set((0, 0)));
         FAIL_FILE.with(|value| value.set(false));
         FAIL_PARENT.with(|value| value.set(false));
     }
-    pub(crate) fn counts() -> (usize, usize) {
+    pub fn counts() -> (usize, usize) {
         COUNTS.with(Cell::get)
     }
-    pub(crate) fn fail_file() {
+    pub fn fail_file() {
         FAIL_FILE.with(|value| value.set(true));
     }
-    pub(crate) fn fail_parent() {
+    pub fn fail_parent() {
         FAIL_PARENT.with(|value| value.set(true));
     }
     pub(super) fn before_file() -> std::io::Result<()> {
@@ -965,17 +981,17 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod frame_observations {
+#[cfg(any(test, feature = "test-observability"))]
+pub mod frame_observations {
     use std::cell::Cell;
     thread_local! {static MAXIMUM:Cell<usize>=const{Cell::new(0)};}
     pub(crate) fn record_capacity(capacity: usize) {
         MAXIMUM.with(|v| v.set(v.get().max(capacity)));
     }
-    pub(crate) fn reset() {
+    pub fn reset() {
         MAXIMUM.with(|v| v.set(0));
     }
-    pub(crate) fn maximum_capacity() -> usize {
+    pub fn maximum_capacity() -> usize {
         MAXIMUM.with(Cell::get)
     }
 }
