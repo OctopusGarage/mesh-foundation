@@ -442,3 +442,6 @@ mod tests {
         ));
     }
 }
+
+/// Bounded spool admission and retention thresholds.
+pub mod capacity;
