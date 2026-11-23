@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 description = "Bounded event reconciliation primitives for peer replicas"
 
+[features]
+test-observability = []
+
 [dependencies]
 sha2 = "0.10"
 bincode = "1.3"
