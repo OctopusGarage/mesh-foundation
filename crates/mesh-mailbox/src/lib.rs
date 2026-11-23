@@ -448,3 +448,6 @@ pub mod capacity;
 
 /// Bounded compatibility frames for mailbox delta and body retrieval.
 pub mod rpc;
+
+/// Finite mailbox delta selection.
+pub mod delta;
