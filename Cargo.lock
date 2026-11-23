@@ -612,6 +612,7 @@ dependencies = [
  "hkdf",
  "mesh-identity",
  "mesh-replication",
+ "serde",
  "sha2 0.10.9",
  "x25519-dalek",
  "zeroize",

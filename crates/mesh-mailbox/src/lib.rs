@@ -445,3 +445,6 @@ mod tests {
 
 /// Bounded spool admission and retention thresholds.
 pub mod capacity;
+
+/// Bounded compatibility frames for mailbox delta and body retrieval.
+pub mod rpc;

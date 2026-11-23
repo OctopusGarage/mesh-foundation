@@ -12,6 +12,7 @@ bincode = "1.3"
 hkdf = "0.12"
 mesh-identity = { path = "../mesh-identity" }
 mesh-replication = { path = "../mesh-replication" }
+serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 x25519-dalek = { version = "3", features = ["static_secrets", "getrandom"] }
 zeroize = "1"
