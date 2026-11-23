@@ -451,3 +451,6 @@ pub mod rpc;
 
 /// Finite mailbox delta selection.
 pub mod delta;
+
+/// Authorized mailbox delta request dispatch.
+pub mod service;
