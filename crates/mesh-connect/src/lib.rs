@@ -1,5 +1,6 @@
 //! Pinned-key Noise sessions over reliable, ordered byte streams.
 
+pub mod discovery;
 pub mod frame;
 pub mod handshake;
 pub mod net;
