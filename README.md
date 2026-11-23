@@ -12,7 +12,9 @@ identity proof, discovery, session pooling and offline custody remain in Mesh
 Talk. The SDK's pinned-key profile is for new applications. It does not
 implement Mesh Talk's application handshake or wire protocol.
 
-`mesh-replication` and application integration are pending.
+`mesh-replication` provides bounded ID inventory assembly, canonical digests,
+and exact set differences. It is independent of `mesh-connect`. Session
+orchestration, authorization adapters and application integration are pending.
 
 Run `cargo test --workspace` to exercise real loopback TCP and peer-key
 rejection.
