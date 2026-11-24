@@ -3,7 +3,7 @@
 use mesh_blob::{
     BlobLayout, DirectoryChunkStore, EncryptedChunkSource, FileKey, SparseBlobReceiver, chunk_hash,
     file_checksum, seal_chunk_indexed,
-    session::{SessionChunkSource, serve_chunk},
+    session::{SessionChunkSource, serve_request},
 };
 use mesh_connect::PeerSession;
 use mesh_identity::device::DeviceIdentity;
@@ -39,23 +39,39 @@ async fn authenticated_tcp_sources_supply_complementary_chunks() {
                         })
                         .await
                         .unwrap();
-                    serve_chunk(&mut session, |peer, requested, chunk, length| {
-                        assert_eq!(*peer, client_key);
-                        assert_eq!(requested, object);
-                        assert_eq!(chunk as usize, index);
-                        assert_eq!(length, 18);
-                        Some(ciphertext)
-                    })
-                    .await
-                    .unwrap();
+                    for _ in 0..2 {
+                        serve_request(
+                            &mut session,
+                            |peer, requested, chunk, length| {
+                                assert_eq!(*peer, client_key);
+                                assert_eq!(requested, object);
+                                assert_eq!(chunk as usize, index);
+                                assert_eq!(length, 18);
+                                Some(ciphertext.clone())
+                            },
+                            |peer, requested, start, length| {
+                                assert_eq!(*peer, client_key);
+                                assert_eq!(requested, object);
+                                assert_eq!((start, length), (0, 3));
+                                Some(
+                                    (start..start + length)
+                                        .map(|chunk| chunk as usize == index)
+                                        .collect(),
+                                )
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    }
                 }));
                 let socket = TcpStream::connect(address).await.unwrap();
                 let session = PeerSession::connect(socket, &client.secret_bytes().1, &public)
                     .await
                     .unwrap();
-                let available = (0..3).map(|chunk| chunk == index).collect();
                 sources.push(EncryptedChunkSource::new(
-                    SessionChunkSource::new(object, available, session, Duration::from_secs(2)),
+                    SessionChunkSource::discover(object, 3, 3, session, Duration::from_secs(2))
+                        .await
+                        .unwrap(),
                     &file_key,
                     file_nonce,
                 ));

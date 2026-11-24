@@ -205,3 +205,9 @@ serve indexed ciphertext and the receiver wraps each source in
 `EncryptedChunkSource`. Keep the plaintext staging directory private.
 The transport's frame ceiling includes the AEAD tag, so choose a chunk
 layout that fits before publishing a manifest.
+
+On the dedicated session, `SessionChunkSource::discover` fetches the
+availability snapshot in bounded pages before requesting data. Providers
+dispatch both request types via `serve_request` and check object access
+independently for availability and content. The host still discovers
+candidate peers and determines which peer identities it can contact.
