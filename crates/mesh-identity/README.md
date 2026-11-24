@@ -27,7 +27,8 @@ Licensed under MIT; see the workspace LICENSE.
 ## Alpha.2 neutral credential profile
 
 Account certificate and account ID domains use versioned `mesh-foundation-*`
-separators. Device key bytes and device fingerprints are unchanged. Applications
-requiring historic product-specific account IDs and certificate signatures must
+separators. Raw device key bytes remain unchanged; node fingerprints now use
+`mesh-foundation-node-id-v1` through `node_id()` / `node_id_from()`. Applications
+requiring historic product-specific device/account IDs and certificate signatures must
 keep their original profile adapter; do not reinterpret existing signatures under
 the new domains. Enrollment, trust, revocation and recovery remain host policy.
