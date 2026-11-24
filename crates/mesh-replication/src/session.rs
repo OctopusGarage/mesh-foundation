@@ -82,14 +82,27 @@ impl<E: std::error::Error + 'static> std::error::Error for HaveError<E> {
 pub async fn receive_have<S, Id>(
     session: &mut S,
     limits: HaveLimits,
-    mut decode: impl FnMut(&[u8]) -> Result<HaveFrame<Id>, S::Error>,
+    decode: impl FnMut(&[u8]) -> Result<HaveFrame<Id>, S::Error>,
 ) -> Result<Vec<Id>, HaveError<S::Error>>
 where
     S: ReconciliationSession,
 {
+    receive_pages(session, limits, decode, std::convert::identity).await
+}
+
+pub(crate) async fn receive_pages<S: ReconciliationSession, Id, Error>(
+    session: &mut S,
+    limits: HaveLimits,
+    mut decode: impl FnMut(&[u8]) -> Result<HaveFrame<Id>, Error>,
+    map_transport: impl Fn(S::Error) -> Error,
+) -> Result<Vec<Id>, HaveError<Error>> {
     let mut have = Vec::new();
     for _ in 0..limits.frames {
-        let bytes = session.recv().await.map_err(HaveError::Exchange)?;
+        let bytes = session
+            .recv()
+            .await
+            .map_err(&map_transport)
+            .map_err(HaveError::Exchange)?;
         let frame = decode(&bytes).map_err(HaveError::Exchange)?;
         if frame.ids.len() > limits.ids_per_frame {
             return Err(HaveError::Limit);
