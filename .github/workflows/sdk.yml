@@ -41,6 +41,10 @@ jobs:
       - run: cargo test --locked --workspace
       - run: cargo test --locked --workspace --all-features
       - run: cargo test --locked --workspace --no-default-features
+      - run: cargo test --locked -p mesh-foundation-mailbox --no-default-features --features wire
+      - run: cargo test --locked -p mesh-foundation-mailbox --no-default-features --features spool
+      - run: cargo run --locked -p mesh-foundation-mailbox --no-default-features --example typed_mailbox
+      - run: cargo run --locked -p mesh-foundation-mailbox --no-default-features --features spool --example opaque_mailbox
       - run: cargo test --locked -p mesh-foundation-connect --no-default-features
       - run: cargo test --locked -p mesh-foundation-replication --no-default-features
       - run: cargo run --locked -p mesh-foundation-identity --example device_identity

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Breaking:** remove account lifecycle timestamps and implicit sender-chain
+  refresh policy; expose explicit generation-checked receiver rebase candidates.
+- **Breaking:** split typed mailbox model/store/transport/client from optional
+  `wire` and `spool` features; MFOM2 requests carry count/payload allowances.
+- Add configurable spool limits and manual retention, byte-aligned discovery,
+  backend result validation, and independent adapter/retention regression tests.
+  MFMSP1 durable journal bytes remain compatible.
+
 - **Breaking:** remove Mesh Talk event/wire/round APIs and the `legacy-wire` feature;
   consumer-owned protocol crates preserve application compatibility.
 - **Breaking:** introduce neutral node/account identity and signed discovery profiles;

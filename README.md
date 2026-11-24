@@ -71,7 +71,7 @@ using the command above; registry package names use the `mesh-foundation-*` pref
 | [mesh-identity](crates/mesh-identity/README.md) | None | Device and account signing identities |
 | [mesh-e2ee](crates/mesh-e2ee/README.md) | None | Ratchet and sender-key primitives |
 | [mesh-storage](crates/mesh-storage/README.md) | None | Encrypted record logs |
-| [mesh-mailbox](crates/mesh-mailbox/README.md) | None | Opaque records, bounded retrieval and durable spool |
+| [mesh-mailbox](crates/mesh-mailbox/README.md) | `wire`, `spool` (both default) | Opaque records, bounded retrieval and durable spool |
 
 `test-observability`, where available, is intended for compatibility tests.
 Cargo unifies features across a dependency graph; check the resolved graph when
@@ -126,7 +126,7 @@ rejection.
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Pairwise ratchets, group sender keys and checkpoints available. In-memory installation rejects stale candidates. Hosts own key distribution and must compare the persisted checkpoint before committing a durable candidate. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
 | `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption and durable append/rewrite available. Applications own indexed data models and profile lifecycle. |
-| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Opaque records, negotiated delta requests, quota policy and durable per-mailbox spool available. The spool owns its writer lease. Hosts own admission, expiry scheduling and federation. |
+| `mesh-mailbox` | Opaque scoped deposits, bounded retrieval and configurable storage | Typed store/transport ports and budgeted synchronization are independent of optional wire/spool profiles. Hosts own authentication, retention policy, scheduling and federation. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and ordered stream verification available. Hosts stage bytes until verification succeeds and own transfer scheduling, manifests, consent and retention. |
 
 Replication owns its session and store contracts. A composition adapter binds a

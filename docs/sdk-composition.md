@@ -15,14 +15,14 @@ its original compatibility surface; see [migration](business-neutral-migration.m
 | Signing and certificates | `mesh-identity::{device, account}` | Account trust, enrollment, revocation and application identifiers |
 | End-to-end encryption | `mesh-e2ee::{ratchet, sender_key}` | Key establishment/distribution, membership policy and atomic checkpoint commit |
 | Durable encrypted records | `mesh-storage::record_log` | Indexed models, path ownership and lifecycle |
-| Store-and-forward opaque bytes | `mesh-mailbox::{Record, service, client, spool}` | Authentication, payload encryption, recipient addressing, expiry scheduling and federation |
+| Store-and-forward opaque bytes | `mesh-mailbox::{model, ports, client}` | Authentication, payload encryption, recipient addressing, expiry scheduling and federation |
 | Verified large content | `mesh-blob` | Manifests, consent, staging, publication and retention |
 
 `mesh-replication` has no default features and no application event enum.
 `mesh-connect` without default features still provides sessions and capability
 version intersection. Its optional `signed-discovery` feature adds identity and
 serialization for neutral advertisements. Mailbox production code depends only
-on generic replication/storage, not account or device identities. Blob's optional
+on generic replication, not account or device identities; storage and wire codecs are optional. Blob's optional
 `mesh-connect` feature provides the direct byte-session adapter.
 
 ## Safe composition order
@@ -46,20 +46,46 @@ on generic replication/storage, not account or device identities. Blob's optiona
 
 ## Opaque mailbox profile
 
-`Record::new(scope, bytes)` content-addresses opaque bytes under that scope. The
-SDK verifies this hash and scope; it cannot establish authorship or permission.
-Encrypt and authenticate your payload before depositing it and before accepting
-it at retrieval. `MailboxStore` replaces the query backend; `ReconciliationSession`
-replaces the transport. The supplied spool owns its exclusive writer lease and
-applies count/byte limits. The supplied spool expires its entire first-seen
-retention window; it does not implement per-record TTL. Expiry invalidates old
-cursors by changing its epoch. Supply a different MailboxStore for another policy.
+`Record::new(scope, bytes)` content-addresses opaque bytes under that scope. Hash
+integrity is independent of frame size and cannot establish authorship or permission.
+Hosts encrypt/authenticate payloads and check current access before accepting them.
 
-The generic mailbox has a new `MFOM1` wire profile and `MFMSP1` spool format. It
-never interprets chat events. An application-specific envelope can contain a
-signed document, an encrypted notification, a forum update or any host schema.
-Use `cargo run -p mesh-foundation-mailbox --example opaque_mailbox` for a durable
-example and the TCP tests for authenticated reconnect/cursor resumption.
+`MailboxStore` is the synchronous authorized backend port; `MailboxTransport` is
+the asynchronous carrier port. `client::sync_turn` only consumes typed pages and
+records. It creates no timer, network connection or background worker. Its default
+turn allows 200 records, 1 MiB of raw payload and eight operations, with up to eight
+pages of 64 IDs. Smaller caller budgets propagate to both discovery and body
+retrieval. Byte-aligned discovery avoids selecting more bodies than a turn can
+accept. A record larger than the available allowance produces an explicit error;
+it is never acknowledged as an empty completion. Failed/cancelled batches leave
+that batch's cursor uncommitted; earlier successful atomic commits remain valid.
+
+The optional `wire` feature supplies `WireTransport` over `ReconciliationSession`,
+`wire::sync_turn`, RPC codecs and dispatch. Its `MFOM2` profile carries page and
+payload allowances in Delta/Get requests. This adapter imposes its own bounded
+frame profile, independently of the typed model. Service dispatch also validates
+backend results before emitting them. The earlier unreleased `MFOM1` wire is
+rejected; published alpha.1 and Mesh Talk's own protocol remain separate.
+
+The optional `spool` feature supplies `Spool::open_configured` and `SpoolOptions`:
+record/query limits are independent of wire limits. Choose `Retention::Manual`
+for host-triggered clearing or `WindowAge` for the entire first-seen window, not
+per-record TTL. The convenience open methods preserve first-window-age behavior.
+The spool owns its writer lease, encoded-storage quotas and destructive epoch.
+Retention timestamps stay private to storage; cursors carry source/snapshot
+identity and position. Initial empty retrieval followed by an append resumes
+normally. Clearing/expiry invalidates old cursors. The `MFMSP1` disk layout is
+unchanged and covered by an independently constructed historical journal fixture.
+A custom backend may implement another retention/index policy.
+
+Both features are enabled by default for convenience; use `default-features =
+false` for the pure model/ports/client, or enable either feature independently.
+Run these examples from the workspace root:
+
+```sh
+cargo run -p mesh-foundation-mailbox --no-default-features --example typed_mailbox
+cargo run -p mesh-foundation-mailbox --no-default-features --features spool --example opaque_mailbox
+```
 
 ## Application compatibility belongs to consumers
 
@@ -73,3 +99,10 @@ contain no group membership, announcement or chat consent types.
 Cryptographic ratchets, sender-key state machines and encrypted record framing
 remain reusable SDK mechanisms. Keeping a stable cryptographic checkpoint is
 separate from retaining an application's group lifecycle or access policy.
+
+Neutral account identities contain signing material, not creation dates or a
+wall-clock lifecycle. Applications retain that metadata in their own schema.
+Sender-key recovery uses explicit `prepare_rebase` and generation-checked
+`install`; hosts authenticate the distribution and decide when rebasing is
+allowed. Persist the candidate checkpoint atomically with the host state. No
+implicit gap threshold inside the SDK decides application recovery policy.

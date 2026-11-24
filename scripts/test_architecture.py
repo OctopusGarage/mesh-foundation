@@ -30,6 +30,25 @@ class ArchitectureTests(unittest.TestCase):
         self.assertNotIn('mesh-identity', source)
         self.assertNotIn('legacy', source)
 
+    def test_identity_does_not_own_lifecycle_or_wall_clock(self):
+        source = (ROOT / 'crates/mesh-identity/src/account.rs').read_text()
+        self.assertNotIn('SystemTime', source)
+        self.assertNotIn('MAX_ACCOUNT_CREATED_AT_MS', source)
+        self.assertNotRegex(source, r'pub\s+fn\s+(?:created_at_ms|from_secret_bytes_with_created_at)\b')
+
+    def test_mailbox_mechanisms_do_not_import_profiles(self):
+        for name in ['model', 'ports', 'client', 'delta']:
+            source = (ROOT / f'crates/mesh-mailbox/src/{name}.rs').read_text()
+            self.assertNotRegex(source, r'(?:crate::(?:rpc|wire|spool|service)|bincode|mesh_storage|BODY_BUDGET|MAX_PLAINTEXT)')
+        model = (ROOT / 'crates/mesh-mailbox/src/model.rs').read_text()
+        self.assertNotIn('first_seen', model)
+        self.assertNotIn('expires_at', model)
+
+    def test_crypto_exposes_explicit_recovery_not_application_policy(self):
+        source = (ROOT / 'crates/mesh-e2ee/src/sender_key.rs').read_text()
+        self.assertNotRegex(source, r'pub\s+fn\s+refresh_distribution\b')
+        self.assertIn('pub fn prepare_rebase', source)
+
 
 if __name__ == '__main__':
     unittest.main()

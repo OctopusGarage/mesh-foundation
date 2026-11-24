@@ -3,7 +3,7 @@
 Verified locally on 2026-11-24 against the unreleased alpha.2 source. This is not a
 new registry release or an independent cryptographic audit.
 
-## SDK
+## Earlier protocol extraction baseline
 
 - `cargo test --locked --workspace --all-features`: 198 tests including doctests.
 - `cargo test --locked --workspace --no-default-features`: 192 tests including doctests.
@@ -50,3 +50,31 @@ Mesh Talk's unrelated documentation changes were likewise preserved.
 
 No p95/p99, ignored scale rehearsal or full desktop end-to-end coverage is claimed.
 Published alpha.1 source, tag and registry artifacts remain immutable.
+
+## Policy/adapter separation follow-up
+
+The subsequent alpha.2 refactor removes neutral account lifecycle timestamps,
+replaces implicit crypto recovery policy with explicit rebase candidates, and
+separates mailbox model/ports/client from optional wire/spool profiles.
+
+- Workspace default suite: 211 tests including doctests passed.
+- Workspace all-feature suite: 216 tests including doctests passed.
+- Workspace no-default suite: 196 tests including doctests passed.
+- Mailbox wire-only: 16 tests passed; spool-only: 26 tests passed.
+- Strict workspace all-target/all-feature Clippy and warning-denying rustdoc passed.
+- Python release/architecture suite: 10 tests passed; release-policy check passed.
+- Pure typed example accepted a 128 KiB record with no wire/storage features.
+  The spool-only durable example also passed.
+
+Regression evidence includes initially failing tests for empty-source first append,
+byte-aligned 16+4 large-record turns, and backend response budget enforcement.
+The fixed code passes these plus 1 KiB turns, exact 200-record allowances, malformed
+and nonadvancing pages, failed/cancelled atomic commits, source invalidation,
+manual/window-age retention and an independently encoded historical MFMSP1 journal.
+Account compile-fail tests enforce the removed lifecycle API. Crypto tests cover
+explicit rebase, stale installation and preserved consumed/skipped-key semantics.
+CI now checks each mailbox feature independently and runs both composition examples.
+
+Mesh Forum's 26 tests pass with local overrides of this source, including private
+relay retrieval after authenticated TCP reconnect. Consumer Git-pin verification
+and Mesh Talk checks are recorded below after integration finishes.
