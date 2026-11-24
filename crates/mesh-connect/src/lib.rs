@@ -1,7 +1,9 @@
 //! Pinned-key Noise sessions over reliable, ordered byte streams.
 
-mod frame;
+pub mod discovery;
+pub mod frame;
 pub mod handshake;
+pub mod net;
 pub mod session;
 
 use frame::{read_frame, write_frame};
@@ -30,10 +32,14 @@ pub enum TransportError {
     PlaintextTooLarge(usize),
     /// Handshake ended without a peer static key.
     MissingRemoteStatic,
+    /// Identity auth failed (bad signature or static-key mismatch).
+    IdentityMismatch,
     /// Authenticated peer was not the one the caller expected.
     UnexpectedPeer,
     /// The host's admission policy rejected the verified caller.
     AdmissionDenied,
+    /// (De)serialization of the auth payload failed.
+    Serialization(String),
 }
 
 impl std::fmt::Display for TransportError {
@@ -46,10 +52,12 @@ impl std::fmt::Display for TransportError {
             TransportError::MissingRemoteStatic => {
                 write!(f, "handshake produced no remote static key")
             }
+            TransportError::IdentityMismatch => write!(f, "peer identity authentication failed"),
             TransportError::UnexpectedPeer => {
                 write!(f, "authenticated peer was not the expected one")
             }
             TransportError::AdmissionDenied => write!(f, "peer admission denied"),
+            TransportError::Serialization(m) => write!(f, "serialization error: {m}"),
         }
     }
 }
@@ -70,10 +78,13 @@ impl From<snow::Error> for TransportError {
 
 const PEER_SESSION_PROLOGUE: &[u8] = b"mesh-connect/pinned-session/1";
 
-/// An encrypted peer session with local admission. Drop the session on I/O error
-/// or if an in-flight frame operation is cancelled.
+/// An encrypted peer session with local admission.
+///
+/// An interrupted or failed frame exchange retires the stream. Later calls
+/// return an I/O error with kind `NotConnected`. An oversized outgoing
+/// plaintext is rejected before starting a frame and leaves the session usable.
 pub struct PeerSession<S> {
-    stream: S,
+    stream: Option<S>,
     cipher: Session,
     peer_key: [u8; 32],
 }
@@ -94,7 +105,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> PeerSession<S> {
         write_frame(&mut stream, &handshake.write_message()?).await?;
         let output = handshake.into_session()?;
         Ok(Self {
-            stream,
+            stream: Some(stream),
             cipher: output.session,
             peer_key: output.remote_static,
         })
@@ -115,7 +126,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> PeerSession<S> {
             return Err(TransportError::AdmissionDenied);
         }
         Ok(Self {
-            stream,
+            stream: Some(stream),
             cipher: output.session,
             peer_key: output.remote_static,
         })
@@ -125,12 +136,27 @@ impl<S: AsyncRead + AsyncWrite + Unpin> PeerSession<S> {
         &self.peer_key
     }
 
+    fn take_stream(&mut self) -> Result<S, TransportError> {
+        self.stream.take().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotConnected, "peer session retired").into()
+        })
+    }
+
     pub async fn send(&mut self, frame: &[u8]) -> Result<(), TransportError> {
+        if self.stream.is_some() && frame.len() > MAX_PLAINTEXT {
+            return Err(TransportError::PlaintextTooLarge(frame.len()));
+        }
+        let mut stream = self.take_stream()?;
         let ciphertext = self.cipher.encrypt(frame)?;
-        write_frame(&mut self.stream, &ciphertext).await
+        write_frame(&mut stream, &ciphertext).await?;
+        self.stream = Some(stream);
+        Ok(())
     }
 
     pub async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
-        self.cipher.decrypt(&read_frame(&mut self.stream).await?)
+        let mut stream = self.take_stream()?;
+        let plaintext = self.cipher.decrypt(&read_frame(&mut stream).await?)?;
+        self.stream = Some(stream);
+        Ok(plaintext)
     }
 }

@@ -74,7 +74,7 @@ impl Handshake {
     /// The static key authenticated by the messages received so far. On the
     /// initiator this is available after message two, before revealing its own
     /// static key in message three.
-    pub(crate) fn remote_static(&self) -> Result<[u8; 32], TransportError> {
+    pub fn remote_static(&self) -> Result<[u8; 32], TransportError> {
         self.state
             .get_remote_static()
             .ok_or(TransportError::MissingRemoteStatic)?

@@ -2,10 +2,13 @@ use crate::{MAX_FRAME, TransportError};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Write a length-prefixed frame (4-byte big-endian length + blob) and flush.
-pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
+pub async fn write_frame<W: AsyncWrite + Unpin>(
     w: &mut W,
     blob: &[u8],
 ) -> Result<(), TransportError> {
+    if blob.len() > MAX_FRAME {
+        return Err(TransportError::FrameTooLarge(blob.len()));
+    }
     let len = blob.len() as u32;
     w.write_all(&len.to_be_bytes()).await?;
     w.write_all(blob).await?;
@@ -14,7 +17,7 @@ pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
 }
 
 /// Read one length-prefixed frame, rejecting absurd lengths before allocating.
-pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8>, TransportError> {
+pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8>, TransportError> {
     fn incomplete_frame(error: std::io::Error) -> std::io::Error {
         use std::io::ErrorKind;
         match error.kind() {
