@@ -8,7 +8,8 @@ local overrides, CI verification and release steps.
 Use `mesh-connect` for pinned-key Noise XX sessions over a reliable, ordered
 byte stream. Pass a connected TCP stream or an equivalent transport. Provide
 a trusted public key to dial and an admission policy to accept. Discard a
-session after a failed or cancelled in-flight frame. The package also exposes
+session after a failed or cancelled in-flight frame. The session closes the
+underlying stream and rejects reuse automatically. The package also exposes
 LAN sockets, signed discovery announcements and queries, and candidate
 selection. A host runs discovery, provides its trust policy and schedules
 reconnects. Mesh Talk composes the same frame primitives with its existing
