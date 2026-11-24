@@ -100,6 +100,8 @@ pub struct EncryptedRecordLog<R> {
     rollback_boundary: u64,
     #[cfg(any(test, feature = "test-observability"))]
     pub before_rewrite_rename: Option<BeforeReplace>,
+    #[cfg(any(test, feature = "test-observability"))]
+    fail_replacements: bool,
     _marker: PhantomData<R>,
 }
 
@@ -199,6 +201,8 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
                     rollback_boundary: 0,
                     #[cfg(any(test, feature = "test-observability"))]
                     before_rewrite_rename: None,
+                    #[cfg(any(test, feature = "test-observability"))]
+                    fail_replacements: false,
                     _marker: PhantomData,
                 })
             }
@@ -258,6 +262,8 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             rollback_boundary: 0,
             #[cfg(any(test, feature = "test-observability"))]
             before_rewrite_rename: None,
+            #[cfg(any(test, feature = "test-observability"))]
+            fail_replacements: false,
             _marker: PhantomData,
         })
     }
@@ -476,10 +482,19 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         })
     }
 
+    #[cfg(any(test, feature = "test-observability"))]
+    pub fn fail_replacements_for_test(&mut self, enabled: bool) {
+        self.fail_replacements = enabled;
+    }
+
     fn replace_with(
         &mut self,
         write: impl FnOnce(&Self, &mut BufWriter<&File>) -> Result<(), RecordLogError>,
     ) -> Result<(), RecordLogError> {
+        #[cfg(any(test, feature = "test-observability"))]
+        if self.fail_replacements {
+            return Err(std::io::Error::other("injected record log replacement failure").into());
+        }
         let parent = self
             .path
             .parent()
