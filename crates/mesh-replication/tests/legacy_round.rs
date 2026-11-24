@@ -7,7 +7,7 @@ use mesh_replication::{
         SyncProgress,
     },
     legacy_wire::{self, FpResponse, HaveChunk, SyncFollowup, SyncResponse, SyncWire},
-    session::ReconciliationSession,
+    session::{HaveError, HaveLimits, HavePage, HaveSource, ReconciliationSession},
 };
 use std::{
     cell::RefCell,
@@ -43,6 +43,32 @@ struct Replica {
     accepted: RefCell<HashSet<EventId>>,
     exports: Vec<Event>,
 }
+struct FixtureHave(Vec<EventId>);
+
+impl HaveSource for FixtureHave {
+    type Id = EventId;
+    type Cursor = usize;
+    type Error = RoundFault;
+
+    fn page(
+        &mut self,
+        cursor: Option<&usize>,
+        limit: usize,
+        _: usize,
+    ) -> Result<HavePage<EventId, usize>, RoundFault> {
+        let start = cursor.copied().unwrap_or(0);
+        let end = (start + limit).min(self.0.len());
+        Ok(HavePage {
+            ids: self.0[start..end].to_vec(),
+            next: (end < self.0.len()).then_some(end),
+        })
+    }
+
+    fn validate(&self) -> Result<(), RoundFault> {
+        Ok(())
+    }
+}
+
 impl RoundBackend<RoundFault> for Replica {
     type Peer = ();
     type View = ();
@@ -93,43 +119,44 @@ impl RoundBackend<RoundFault> for Replica {
     fn retain_quiet_comparison(&self, _: &(), _: QuietComparison) -> Result<(), RoundFault> {
         Ok(())
     }
-    async fn send_have_pages(
-        &self,
-        session: &mut impl ReconciliationSession<Peer = (), Error = RoundFault>,
-        _: &(),
-        scope: ConversationId,
-        sender: HaveSender,
-    ) -> Result<(), RoundFault> {
-        let ids = self.accepted.borrow().iter().copied().collect();
-        let frame = sender.encode(
-            scope,
-            mesh_replication::session::HaveFrame { ids, more: false },
-        )?;
-        session.send(&frame).await
+    type HaveReservation = ();
+
+    fn have_limits(&self) -> HaveLimits {
+        HaveLimits {
+            ids_per_frame: 32,
+            frames: 8,
+            total_ids: 256,
+        }
     }
-    async fn receive_have(
+
+    fn have_source<'a>(
+        &'a self,
+        _: &'a (),
+    ) -> impl HaveSource<Id = EventId, Error = RoundFault> + 'a {
+        FixtureHave(self.accepted.borrow().iter().copied().collect())
+    }
+
+    fn reserve_remote_have(&self) -> Result<(), RoundFault> {
+        Ok(())
+    }
+
+    fn collect_remote_have(
         &self,
-        session: &mut impl ReconciliationSession<Peer = (), Error = RoundFault>,
-        scope: ConversationId,
-        sender: HaveSender,
+        ids: Vec<EventId>,
+        _: (),
         _: bool,
     ) -> Result<Self::RemoteHave, RoundFault> {
-        let ids = mesh_replication::session::receive_have(
-            session,
-            mesh_replication::session::HaveLimits {
-                ids_per_frame: 32,
-                frames: 8,
-                total_ids: 256,
-            },
-            |bytes| sender.decode(scope, bytes),
-        )
-        .await
-        .map_err(|error| match error {
-            mesh_replication::session::HaveError::Exchange(error) => error,
-            _ => RoundFault::UnexpectedMessage,
-        })?;
         Ok(Box::new(ids.into_iter().collect()))
     }
+
+    fn have_error(&self, error: HaveError<RoundFault>) -> RoundFault {
+        match error {
+            HaveError::Exchange(error) => error,
+            _ => RoundFault::UnexpectedMessage,
+        }
+    }
+
+    async fn yield_inventory_work(&self) {}
 
     async fn intersection_count(
         &self,

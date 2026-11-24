@@ -7,7 +7,7 @@ use crate::legacy_wire::{
     self, FpRequest, FpResponse, HaveChunk, SyncFollowup, SyncRequest, SyncWire,
 };
 use crate::legacy_wire::{FileConsentStatus, SyncResponse};
-use crate::session::ReconciliationSession;
+use crate::session::{self, HaveError, HaveLimits, HaveSource, ReconciliationSession};
 use std::collections::HashSet;
 use std::ops::Deref;
 
@@ -138,20 +138,22 @@ pub trait RoundBackend<E> {
     ) -> Result<bool, E>;
     fn quiet_comparison_token(&self, view: &Self::View) -> Result<Option<[u8; 32]>, E>;
     fn retain_quiet_comparison(&self, view: &Self::View, hint: QuietComparison) -> Result<(), E>;
-    async fn send_have_pages(
+    type HaveReservation;
+
+    fn have_limits(&self) -> HaveLimits;
+    fn have_source<'a>(
+        &'a self,
+        view: &'a Self::View,
+    ) -> impl HaveSource<Id = EventId, Error = E> + 'a;
+    fn reserve_remote_have(&self) -> Result<Self::HaveReservation, E>;
+    fn collect_remote_have(
         &self,
-        session: &mut impl ReconciliationSession<Peer = Self::Peer, Error = E>,
-        view: &Self::View,
-        conversation: ConversationId,
-        sender: HaveSender,
-    ) -> Result<(), E>;
-    async fn receive_have(
-        &self,
-        session: &mut impl ReconciliationSession<Peer = Self::Peer, Error = E>,
-        conversation: ConversationId,
-        sender: HaveSender,
+        ids: Vec<EventId>,
+        reservation: Self::HaveReservation,
         compare: bool,
     ) -> Result<Self::RemoteHave, E>;
+    fn have_error(&self, error: HaveError<E>) -> E;
+    async fn yield_inventory_work(&self);
     async fn intersection_count(
         &self,
         view: &Self::View,
@@ -167,6 +169,52 @@ pub trait RoundBackend<E> {
         remote: &Self::RemoteHave,
         max_frames: usize,
     ) -> Result<Vec<SyncFollowup>, E>;
+}
+
+async fn send_have_pages<B, S, E>(
+    backend: &B,
+    channel: &mut S,
+    view: &B::View,
+    scope: ConversationId,
+    sender: HaveSender,
+) -> Result<(), E>
+where
+    B: RoundBackend<E>,
+    S: ReconciliationSession<Peer = B::Peer, Error = E>,
+    E: From<RoundFault>,
+{
+    let expected = backend.have_count(backend.advertised_count(view)? as u64)?;
+    session::send_have(
+        channel,
+        &mut backend.have_source(view),
+        expected,
+        backend.have_limits(),
+        |frame| sender.encode(scope, frame).map_err(E::from),
+        || backend.yield_inventory_work(),
+    )
+    .await
+    .map_err(|error| backend.have_error(error))
+}
+
+async fn receive_have<B, S, E>(
+    backend: &B,
+    channel: &mut S,
+    scope: ConversationId,
+    sender: HaveSender,
+    compare: bool,
+) -> Result<B::RemoteHave, E>
+where
+    B: RoundBackend<E>,
+    S: ReconciliationSession<Peer = B::Peer, Error = E>,
+    E: From<RoundFault>,
+{
+    let reservation = backend.reserve_remote_have()?;
+    let ids = session::receive_have(channel, backend.have_limits(), |bytes| {
+        sender.decode(scope, bytes).map_err(E::from)
+    })
+    .await
+    .map_err(|error| backend.have_error(error))?;
+    backend.collect_remote_have(ids, reservation, compare)
 }
 
 pub type Probe<View> = (SyncMetadata, Option<View>);
@@ -363,9 +411,14 @@ impl SyncProgress {
                 SyncWire::Request(request)
             })?)
             .await?;
-        backend
-            .send_have_pages(channel, &have_view, conversation, HaveSender::Requester)
-            .await?;
+        send_have_pages(
+            backend,
+            channel,
+            &have_view,
+            conversation,
+            HaveSender::Requester,
+        )
+        .await?;
 
         // Response carries the (bounded) events; the responder's have is streamed after.
         let response = match decode_frame(&channel.recv().await?)? {
@@ -390,14 +443,14 @@ impl SyncProgress {
             return Err(RoundFault::UnexpectedMessage.into());
         }
         self.received_wire_total += response.events.len();
-        let remote_have = backend
-            .receive_have(
-                channel,
-                conversation,
-                HaveSender::Responder,
-                comparison_token.is_some() && self.received_wire_total == 0,
-            )
-            .await?;
+        let remote_have = receive_have(
+            backend,
+            channel,
+            conversation,
+            HaveSender::Responder,
+            comparison_token.is_some() && self.received_wire_total == 0,
+        )
+        .await?;
         self.remote_have_count = Some(backend.intersection_count(&have_view, &remote_have).await?);
         let report = backend.apply(&response.events)?;
         if backend.admission_denied() {
@@ -741,9 +794,8 @@ where
             let conversation = request.conversation;
             // The Request's inline have is empty on the networked path; read the
             // requester's streamed have, then answer.
-            let have = backend
-                .receive_have(channel, conversation, HaveSender::Requester, false)
-                .await?;
+            let have =
+                receive_have(backend, channel, conversation, HaveSender::Requester, false).await?;
             // Transfer the existing connection-owned lease before awaiting.
             // Incomplete responses drop it; only a fully sent response is retained.
             let view = match backend.take_custody_view(&conversation)? {
@@ -778,9 +830,7 @@ where
                     have: Vec::new(),
                 }))?)
                 .await?;
-            backend
-                .send_have_pages(channel, &view, conversation, HaveSender::Responder)
-                .await?;
+            send_have_pages(backend, channel, &view, conversation, HaveSender::Responder).await?;
             drop(backend.retain_custody_view(view)?);
             Ok(conversation)
         }
