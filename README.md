@@ -3,7 +3,8 @@
 Rust libraries for peer connectivity and decentralized replication.
 
 See [SDK development and delivery](docs/sdk-delivery.md) for dependency pins,
-local overrides, CI verification and release steps.
+local overrides, CI verification and release steps. See [SDK composition](docs/sdk-composition.md)
+for the dependency graph, optional adapters and integration contracts.
 
 Use `mesh-connect` for pinned-key Noise XX sessions over a reliable, ordered
 byte stream. Pass a connected TCP stream or an equivalent transport. Provide
@@ -16,7 +17,10 @@ reconnects. Mesh Talk composes the same frame primitives with its existing
 application handshake and session pooling.
 
 `mesh-replication` provides bounded ID inventory assembly, canonical digests,
-and exact set differences. It is independent of `mesh-connect`. It also includes the requester and responder for the existing Mesh Talk wire protocol.
+and exact set differences. Its generic primitives are independent of
+`mesh-connect`. Enable the optional `mesh-connect` feature for direct
+composition with a pinned session. The default `legacy-wire` feature includes
+the requester and responder for the existing Mesh Talk wire protocol.
 The round engine owns inventory framing, direction and bounds. Callers supply
 the current authorized store, reserve memory for the remote inventory before
 its first read and supply an authenticated session.

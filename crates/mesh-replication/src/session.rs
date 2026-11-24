@@ -1,5 +1,7 @@
 //! Transport-independent authenticated frame and inventory transfer contracts.
 
+use crate::{CompleteInventory, EventId, InventoryError};
+
 /// The transport owns peer authentication, ordered delivery and the frame
 /// length bound. Discard a session after an interrupted inventory exchange.
 pub trait ReconciliationSession {
@@ -9,6 +11,30 @@ pub trait ReconciliationSession {
     fn peer_identity(&self) -> &Self::Peer;
     fn send(&mut self, frame: &[u8]) -> impl Future<Output = Result<(), Self::Error>> + Send;
     fn recv(&mut self) -> impl Future<Output = Result<Vec<u8>, Self::Error>> + Send;
+}
+
+/// Enables direct use of Mesh Connect's pinned-key session with the replication
+/// interface. Applications using IP, another carrier, or a custom handshake
+/// can instead implement `ReconciliationSession` on their own session type.
+#[cfg(feature = "mesh-connect")]
+impl<S> ReconciliationSession for mesh_connect::PeerSession<S>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
+{
+    type Peer = [u8; 32];
+    type Error = mesh_connect::TransportError;
+
+    fn peer_identity(&self) -> &Self::Peer {
+        self.peer_key()
+    }
+
+    async fn send(&mut self, frame: &[u8]) -> Result<(), Self::Error> {
+        self.send(frame).await
+    }
+
+    async fn recv(&mut self) -> Result<Vec<u8>, Self::Error> {
+        self.recv().await
+    }
 }
 
 pub struct HaveLimits {
@@ -28,6 +54,26 @@ pub enum HaveError<E> {
     Limit,
     Allocation,
     CountMismatch,
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for HaveError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exchange(error) => write!(f, "inventory exchange failed: {error}"),
+            Self::Limit => f.write_str("inventory transfer exceeds its limits"),
+            Self::Allocation => f.write_str("unable to allocate bounded inventory"),
+            Self::CountMismatch => f.write_str("inventory count differs from the captured view"),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for HaveError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Exchange(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 /// Receive a bounded inventory from framed I/O. The codec checks the protocol
@@ -69,6 +115,46 @@ where
         }
     }
     Err(HaveError::Limit)
+}
+
+/// Failure while reading or canonicalizing an inventory stream.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReceiveInventoryError<E> {
+    Transfer(HaveError<E>),
+    Inventory(InventoryError),
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for ReceiveInventoryError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Transfer(error) => error.fmt(f),
+            Self::Inventory(error) => error.fmt(f),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ReceiveInventoryError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Transfer(error) => Some(error),
+            Self::Inventory(error) => Some(error),
+        }
+    }
+}
+
+/// Receive a bounded authorized inventory and canonicalize it in place.
+///
+/// The decoder must validate the stream's role and scope. Only a terminal
+/// page completes the inventory. Duplicate IDs fail even across page boundaries.
+pub async fn receive_inventory<S: ReconciliationSession>(
+    session: &mut S,
+    limits: HaveLimits,
+    decode: impl FnMut(&[u8]) -> Result<HaveFrame<EventId>, S::Error>,
+) -> Result<CompleteInventory, ReceiveInventoryError<S::Error>> {
+    let ids = receive_have(session, limits, decode)
+        .await
+        .map_err(ReceiveInventoryError::Transfer)?;
+    CompleteInventory::from_owned(ids).map_err(ReceiveInventoryError::Inventory)
 }
 
 /// A finite, already authorized inventory. A page may contain zero IDs and
