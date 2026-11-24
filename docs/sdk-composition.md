@@ -218,3 +218,25 @@ availability snapshot in bounded pages before requesting data. Providers
 dispatch both request types via `serve_request` and check object access
 independently for availability and content. The host still discovers
 candidate peers and determines which peer identities it can contact.
+
+## Diagnostics and application events
+
+Install a log or tracing subscriber in the application. SDK diagnostics and
+per-operation progress are intended for telemetry. Publish application events
+from your own transaction boundary when consumers require replay or deduplication.
+
+| Crate | Integration point |
+| --- | --- |
+| `mesh-connect` | Classify session and frame failures with `TransportError::kind()`. The host owns discovery, routing and connection lifecycle, so measure attempts and latency around those entry points. |
+| `mesh-identity` | Use `check_issuer_for_device` for a certificate outcome and apply your own issuer trust policy. Keep account and device keys out of metric labels. |
+| `mesh-e2ee` | Use the typed ratchet error or `SenderKeyError::kind()`. Emit business notifications after the host commits decrypted state. |
+| `mesh-replication` | Use `pull_missing_observed` for an atomic batch's committed record count, and the returned result for success or failure. Legacy-wire callers can instrument their own commit adapter. |
+| `mesh-storage` | Use `rewrite_report` and `append_batch_atomic_report` for visible replacement and directory durability status. Treat a pending sync as a durability issue and keep indexes aligned with the visible replacement. |
+| `mesh-mailbox` | Use `usage`, `expire_report` and the deposit outcome for occupancy, scheduled expiry and local custody. Use `deposit_observed` to report expiry committed during deposit, even if the new envelope fails to store. |
+| `mesh-blob` | Use `download_observed` for source rejections, newly stored chunks and final verification. After restore, use `stored_chunks` to seed progress. Emit publication separately after the host publishes the verified object. |
+
+Callbacks run inline, including on async workers. Keep them nonblocking and
+bounded. For metrics or UI, aggregate counts and coalesce updates in the
+application. Chunk completions can arrive out of order. Handle terminal errors
+from the returned result and infer cancellation from task ownership. Avoid
+logging raw payloads, key material, local paths, or raw error strings by default.
