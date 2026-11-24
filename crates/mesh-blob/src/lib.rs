@@ -103,17 +103,13 @@ impl std::error::Error for FileError {}
 /// SHA-256 of the whole file plaintext — recorded in the manifest, re-checked after
 /// reassembly for end-to-end integrity.
 pub fn file_checksum(data: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    hasher.finalize().into()
+    Sha256::digest(data).into()
 }
 
 /// SHA-256 of a single chunk's plaintext — recorded per chunk in the v2 manifest so a
 /// received chunk can be verified on arrival (independent of the whole-file checksum).
 pub fn chunk_hash(plaintext: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(plaintext);
-    hasher.finalize().into()
+    file_checksum(plaintext)
 }
 
 /// A fresh random 8-byte per-file nonce salt for the v2 deterministic-nonce scheme.
