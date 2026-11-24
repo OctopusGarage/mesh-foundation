@@ -97,3 +97,10 @@ Old-peer policy exhaustion reports limited/deferred rather than equality; adding
 a bounded SDK helper does not itself change the Mesh Talk application protocol.
 
 Validation evidence: [SDK verification](bounded-sync-verification.md).
+
+## Recent pages and storage-backed readers
+
+For explicit recent-first/older navigation use [history::fetch_page](recent-history.md).
+For SQL-backed range snapshots use `range::RangeRead` and the fallible checkpoint
+reader methods. The original `SyncDriver` continues to own its in-memory index;
+the storage adapter owns snapshot consistency, durable updates and disk limits.

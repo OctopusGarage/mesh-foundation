@@ -191,3 +191,6 @@ pub mod range;
 
 /// High-level budgeted range reconciliation and record retrieval.
 pub mod driver;
+
+/// Recent-history pages with explicit source-local older-history continuation.
+pub mod history;

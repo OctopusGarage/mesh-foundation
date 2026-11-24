@@ -21,7 +21,8 @@ The tested toolchain is Rust 1.99.0; an MSRV has not been established.
 
 Current development targets `0.1.0-alpha.2` (not yet published). See
 [bounded incremental synchronization](docs/bounded-sync.md) for new turn budgets,
-range reconciliation and mailbox acknowledgement APIs. Installed alpha.1 packages
+range reconciliation and mailbox acknowledgement APIs. See [recent history](docs/recent-history.md)
+for explicit recent/older pages and fallible disk-backed range readers. Installed alpha.1 packages
 retain their published behavior.
 
 ## Quick start

@@ -6,8 +6,8 @@ Development candidate: 0.1.0-alpha.2. Not published; alpha.1 and its tag are unc
 
 Verified locally with Rust 1.99.0:
 
-- Workspace all-feature suite: 243 passing tests including doctests.
-- Replication with default features disabled: 40 passing tests including doctests.
+- Workspace all-feature suite: 250 passing tests including doctests.
+- Replication with default features disabled: 47 passing tests including doctests.
 - Final targeted driver suite: six tests pass after progress-reporting refinement.
 - All-target/all-feature Clippy with warnings denied; rustdoc warnings denied.
 - Release policy tests, alpha.2 tag check, actionlint and whitespace checks.
@@ -47,3 +47,13 @@ Mesh Talk integration is a separate source change and test run in the adjacent
 repository. Do not infer application behavior from SDK test success. Its final
 runtime verification is recorded there; the source application must explicitly
 upgrade or include these interfaces. See bounded-sync.md for host obligations.
+
+## Recent pages and fallible stored readers
+
+The all-feature workspace suite passes 250 tests including doctests after adding
+six recent-page/reader integration tests and a fallible-reader unit regression.
+The new cases cover 200+1 pages, source/snapshot/policy mismatch, independent byte
+and scan limits, failed commit, revocation, cancellation, malformed continuations
+and storage errors without frontier advancement. Workspace Clippy with warnings
+denied also passes. See [recent history](recent-history.md) for coverage semantics
+and the separate application disk-backed reference implementation.

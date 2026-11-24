@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Add typed SDK diagnostics, committed progress callbacks, and durability reports.
+- Add source/scope-bound recent-history pages with explicit older navigation and atomic cursor commits.
+- Add fallible range-reader checkpoint APIs for disk-backed authorized indexes.
 - Add total-turn pull budgets and an indexed range synchronization driver.
 - Add cancellation-safe range checkpoints, compressed summaries and dedicated frames.
 - Add bounded mailbox retrieval with atomic body/cursor acknowledgement and explicit reset.
