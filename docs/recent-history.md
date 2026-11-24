@@ -84,3 +84,19 @@ repair can supply dependencies. With a long causal chain, resolving that closure
 can require older message bodies; the current signed event format cannot replace
 them with unauthenticated header hints. Immediate ancestor-free cold rendering
 is not promised by this optimization.
+
+## Resource accounting and causal repair
+
+The application accounts retained heap and SQL storage separately: 32 MiB is a
+hard idle heap budget; 512 MiB is a soft SQL cache quota that evicts older plans
+and admits one oversized plan so a large active group can still progress. An
+indexed, conservative per-selection charge avoids rescanning all cached rows at
+every preparation turn. Navigation and blocked-ID frontiers are capped at 4,096.
+
+Its negotiated v2 group repair can seek bounded ascending source-rank windows
+near at most 32 missing-parent anchors. Each window remains subject to record,
+byte and examined-row budgets. This avoids repeatedly replaying the oldest
+prefix for a small gap in a mostly synchronized group. Ordered progress is
+acknowledged only after admission; completing that lane triggers ordinary Merkle
+verification rather than asserting equality from an exhausted page. Older peers
+retain the bounded existing protocol without this extension.

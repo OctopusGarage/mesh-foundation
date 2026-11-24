@@ -6,7 +6,7 @@ Development candidate: 0.1.0-alpha.2. Not published; alpha.1 and its tag are unc
 
 Verified locally with Rust 1.99.0:
 
-- Workspace all-feature suite: 250 passing tests including doctests.
+- Workspace all-feature suite: 251 passing tests including doctests.
 - Replication with default features disabled: 47 passing tests including doctests.
 - Final targeted driver suite: six tests pass after progress-reporting refinement.
 - All-target/all-feature Clippy with warnings denied; rustdoc warnings denied.
@@ -50,7 +50,7 @@ upgrade or include these interfaces. See bounded-sync.md for host obligations.
 
 ## Recent pages and fallible stored readers
 
-The all-feature workspace suite passes 250 tests including doctests after adding
+The all-feature workspace suite passes 251 tests including doctests after adding
 six recent-page/reader integration tests and a fallible-reader unit regression.
 The new cases cover 200+1 pages, source/snapshot/policy mismatch, independent byte
 and scan limits, failed commit, revocation, cancellation, malformed continuations
