@@ -166,3 +166,6 @@ pub mod legacy_wire;
 /// Requester engine for Mesh Talk-compatible sync rounds.
 #[cfg(feature = "legacy-wire")]
 pub mod legacy_round;
+
+/// Transport-independent record retrieval and commit orchestration.
+pub mod pull;

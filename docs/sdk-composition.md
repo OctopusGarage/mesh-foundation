@@ -71,8 +71,19 @@ committing permanent changes.
    collects and sorts in place, rejecting duplicates across page boundaries.
    Use `CompleteInventory::from_ids` for the local authorized set and
    `remote.missing_from(&local)` for IDs absent locally.
-4. Fetch missing records through the application's protocol. Authenticate each
-   record and commit accepted records before reporting progress.
+4. Call `pull_missing` with the remote and local inventories. Give the fetch
+   callback the request IDs and byte budget. Bound the response before
+   decoding and use the application protocol to request those IDs. The
+   commit callback verifies content IDs, signatures and current authorization,
+   then commits the whole batch atomically. The SDK rejects duplicate, missing
+   or unexpected IDs and oversized bodies before calling commit.
+5. If a later batch fails, `PullError::committed` reports the earlier confirmed
+   count. Resume after reconnect by building the local inventory from the
+   committed store. An empty difference performs no fetch.
+
+Mesh Forum's board test uses an authenticated TCP session and the generic pull
+with a small fixture protocol. It validates the board and author, commits to an
+encrypted log, then reopens the log to verify persistence.
 
 The generic inventory is ordering and set-comparison machinery. It has no
 record authorization, delivery receipt or application payload schema. The
@@ -131,7 +142,7 @@ Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
 explicit conversion when crossing profiles. A future typed common ID requires
 a migration plan for constructor names and existing callers.
 
-A reusable end-to-end replication protocol for a new record schema still needs
-a scoped record authorization and commit contract. A transport adapter alone
-does not provide this. Mesh Talk and Mesh Forum currently exercise the shared
-legacy codec or bounded inventory operations with different session adapters.
+The generic pull deliberately accepts an application codec and a commit
+callback. A new record schema defines its authorization, ID verification and
+transaction rules there. The SDK supplies selection, batching, response
+validation and durable-progress accounting.
