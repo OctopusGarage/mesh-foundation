@@ -10,12 +10,34 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "https://github.com/OctopusGarage/mesh-foundation.git"
 
 
+PACKAGES = {"mesh-foundation-" + name for name in
+            ("identity", "storage", "e2ee", "connect", "replication", "blob", "mailbox")}
+VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.(?:0|[1-9][0-9]*))?")
+
+
+def validate(packages, tag=None):
+    if {p["name"] for p in packages} != PACKAGES or len(packages) != 7:
+        raise ValueError("expected exactly the seven mesh-foundation packages")
+    versions = {p["version"] for p in packages}
+    if len(versions) != 1 or any(p["publish"] != ["crates-io"] for p in packages):
+        raise ValueError("all packages must share a version and publish only to crates-io")
+    version, = versions
+    if not VERSION.fullmatch(version) or (tag is not None and tag != f"v{version}"):
+        raise ValueError(f"expected release tag v{version}, got {tag}")
+    for package in packages:
+        for dependency in package["dependencies"]:
+            if dependency["name"] in PACKAGES and dependency["req"] != f"={version}":
+                raise ValueError("internal dependencies must pin the exact workspace version")
+    return version
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     check = commands.add_parser("check")
     check.add_argument("--tag")
-    commands.add_parser("patch")
+    patch = commands.add_parser("patch")
+    patch.add_argument("--source", choices=["git", "crates-io"], default="git")
     args = parser.parse_args()
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
@@ -23,20 +45,15 @@ def main():
     ))
     packages = sorted(metadata["packages"], key=lambda package: package["name"])
     if args.command == "patch":
-        print(f"[patch.{json.dumps(SOURCE)}]")
+        print("[patch.crates-io]" if args.source == "crates-io" else f"[patch.{json.dumps(SOURCE)}]")
         for package in packages:
             path = Path(package["manifest_path"]).parent.as_posix()
             print(f'{package["name"]} = {{ path = {json.dumps(path, ensure_ascii=False)} }}')
         return
-    versions = {package["version"] for package in packages}
-    if len(versions) != 1 or any(package["publish"] != [] for package in packages):
-        parser.error("all workspace crates must share one version and disable registry publishing")
-    version, = versions
-    if args.tag and (
-        not re.fullmatch(r"v(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}", args.tag)
-        or args.tag != f"v{version}"
-    ):
-        parser.error(f"expected stable release tag v{version}, got {args.tag}")
+    try:
+        version = validate(packages, args.tag)
+    except ValueError as error:
+        parser.error(str(error))
     print(f"Mesh Foundation {version}, {len(packages)} crates")
 
 

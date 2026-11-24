@@ -1,6 +1,19 @@
 //! Bounded exact inventory comparison for an already authorized event range.
 //! A digest or inventory match does not grant read, write, or custody authority.
 
+//! # Example
+//!
+//! ```
+//! use mesh_replication::CompleteInventory;
+//!
+//! # fn main() -> Result<(), mesh_replication::InventoryError> {
+//! let local = CompleteInventory::from_ids(&[[1; 32], [2; 32]], 128)?;
+//! let peer = CompleteInventory::from_ids(&[[2; 32]], 128)?;
+//! assert_eq!(local.missing_from(&peer).collect::<Vec<_>>(), vec![[1; 32]]);
+//! # Ok(())
+//! # }
+//! ```
+
 use sha2::{Digest, Sha256};
 
 pub type EventId = [u8; 32];
@@ -172,3 +185,9 @@ pub mod pull;
 
 /// Default scoped inventory exchange for new applications.
 pub mod inventory_session;
+
+/// Indexed, bounded range reconciliation.
+pub mod range;
+
+/// High-level budgeted range reconciliation and record retrieval.
+pub mod driver;

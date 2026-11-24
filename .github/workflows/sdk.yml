@@ -5,6 +5,15 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      create_draft_release:
+        description: Create a draft source release (run on an existing version tag)
+        type: boolean
+        default: false
+
+concurrency:
+  group: sdk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -16,23 +25,42 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install repository toolchain
+        shell: bash
+        run: |
+          rustup show active-toolchain
+          rustup component add rustfmt clippy
       - run: rustc --version
+      - run: python -m unittest discover -s scripts -p "test_*.py"
       - run: python scripts/sdk.py check
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --workspace
       - run: cargo test --locked --workspace --all-features
-      - run: cargo test --locked -p mesh-connect --no-default-features
-      - run: cargo test --locked -p mesh-replication --no-default-features
-      - run: cargo test --locked -p mesh-replication --no-default-features --features mesh-connect
+      - run: cargo test --locked --workspace --no-default-features
+      - run: cargo test --locked -p mesh-foundation-connect --no-default-features
+      - run: cargo test --locked -p mesh-foundation-replication --no-default-features
+      - run: cargo run --locked -p mesh-foundation-identity --example device_identity
+      - run: cargo run --locked -p mesh-foundation-replication --no-default-features --example inventory
+      - run: cargo run --locked -p mesh-foundation-replication --no-default-features --example bounded_sync
+      - name: Build API documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --workspace --all-features --no-deps
+      - run: cargo test --locked -p mesh-foundation-replication --no-default-features --features mesh-connect
+
+      - run: cargo test --locked -p mesh-foundation-blob --no-default-features --features mesh-connect
 
   source:
     if: github.ref_type == 'tag'
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Verify release source and build archive
@@ -46,8 +74,39 @@ jobs:
           git rev-parse HEAD > release/COMMIT
           cd release
           sha256sum "mesh-foundation-$GITHUB_REF_NAME.tar.gz" COMMIT > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mesh-foundation-${{ github.ref_name }}
           path: release/
           if-no-files-found: error
+
+  draft-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.create_draft_release && github.ref_type == 'tag'
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mesh-foundation-${{ github.ref_name }}
+          path: release
+      - name: Verify assets and create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          cd release
+          sha256sum --check SHA256SUMS
+          test "$(cat COMMIT)" = "$RELEASE_SHA"
+          printf 'Source release for commit %s.\n\nReview CHANGELOG.md and add compatibility and migration notes before publishing.\n' "$RELEASE_SHA" > notes.md
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$RELEASE_TAG" --verify-tag --draft "${prerelease[@]}" \
+            --title "Mesh Foundation $RELEASE_TAG" --notes-file notes.md \
+            "mesh-foundation-$RELEASE_TAG.tar.gz" COMMIT SHA256SUMS

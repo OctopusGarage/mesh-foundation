@@ -1,2 +1,4 @@
 /target/
 /build-red.log
+
+__pycache__/

@@ -1,99 +1,165 @@
 # SDK development and delivery
 
-## Delivery model
+## Release channels
 
-Mesh Foundation ships all seven crates as one private Git revision. Every crate
-inherits its version and registry publishing policy from the workspace.
-Consumers pin the same full commit SHA for every Mesh Foundation dependency
-and commit their Cargo.lock. A release tag identifies the source for humans.
-The SHA is the dependency pin and the lockfile records the resolved source.
+Mesh Foundation uses coordinated versions across seven `mesh-foundation-*`
+packages. All seven packages are published at `0.1.0-alpha.1`; see the
+[release verification](alpha-release-verification.md) and
+[GitHub prerelease](https://github.com/OctopusGarage/mesh-foundation/releases/tag/v0.1.0-alpha.1). Public registry uploads expose package source
+regardless of the GitHub repository's visibility.
 
-- Private Git uses existing GitHub read access and keeps inter-crate path
-  dependencies usable. It is the default while the SDK and its API evolve.
-- A private Cargo registry is an option when consumers need SemVer-based
-  resolution and Cargo package distribution. It requires an authenticated
-  index, package hosting, credential management and an owner for availability.
-- crates.io distributes source publicly and published versions are permanent.
-  It requires an explicit decision to publish the SDK, crate-name checks and
-  crate ownership. The current manifests disable registry publication.
+- **crates.io** distributes immutable source packages. docs.rs builds API docs.
+- **GitHub Releases** provide notes, source archives and checksums. They do not
+  register Cargo packages. Mark alpha/beta/rc releases as prereleases.
+- **Development snapshots** use full Git SHAs, not mutable snapshot versions.
+- **Local development** uses paths or root-level Cargo patches.
 
-Sources: [Cargo dependency locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations),
-[alternate registries](https://doc.rust-lang.org/cargo/reference/registries.html),
-[crates.io publishing](https://doc.rust-lang.org/cargo/reference/publishing.html).
+## Registry consumers
+
+After the selected version has been published:
+
+```toml
+[dependencies]
+mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.1" }
+mesh-replication = { package = "mesh-foundation-replication", version = "=0.1.0-alpha.1", default-features = false }
+```
+
+Rust imports remain `mesh_identity` and `mesh_replication`. Old package names are
+not registry aliases: `mesh-identity` belongs to another project. Package keys
+are local aliases, while `package` selects the actual published identity.
+
+Exact prerelease pins deliberately prevent unreviewed alpha upgrades. Upgrade
+all used SDK crates together and commit the application's Cargo.lock. Check the
+changelog, regenerate the lockfile and run `cargo test --locked` in the consumer.
 
 ## Develop and consume
 
-Install rustup and Python 3. The SDK checkout selects the Rust toolchain
-through rust-toolchain.toml. From its root, run the same commands as CI:
+Install rustup and Python 3; `rust-toolchain.toml` selects Rust 1.99.0, rustfmt and
+Clippy. This is the tested compiler, not a minimum supported compiler promise.
+See [CONTRIBUTING](../CONTRIBUTING.md) for the full verification commands.
 
-```sh
-python3 scripts/sdk.py check
-cargo fmt --all --check
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo test --locked --workspace --all-features
+For Git snapshots, use the same full commit SHA for all SDK dependencies:
+
+```toml
+[dependencies]
+mesh-identity = { package = "mesh-foundation-identity", git = "https://github.com/OctopusGarage/mesh-foundation.git", rev = "FULL_REVIEWED_COMMIT_SHA" }
 ```
 
-For a private consumer such as Mesh Forum, use the canonical HTTPS Git URL and
-the full SDK commit SHA in the manifest. Set `CARGO_NET_GIT_FETCH_WITH_CLI=true`
-to use Git's configured credential helper. CI needs explicit read access to
-the SDK repo. Keep credentials out of dependency URLs and lockfiles.
+Replace the illustrative SHA with a real full revision. A private repository
+requires GitHub read access. Use Git's credential helper and, where necessary,
+`CARGO_NET_GIT_FETCH_WITH_CLI=true`; never put tokens in URLs or Cargo.lock.
+Existing Git consumers upgrading across the package rename must add `package`
+aliases. Directory paths and Rust import names remain unchanged.
 
-To use an uncommitted SDK checkout, generate a temporary Cargo config and pass
-it to Cargo from the consumer workspace. The SDK path below assumes sibling
-checkouts. The command emits absolute paths for all seven crates to avoid
-mixed local and Git instances of the same SDK types.
+For registry-based consumers, generate temporary local overrides for all seven
+packages from a sibling SDK checkout:
 
 ```sh
 mesh_patch=$(mktemp -d)/mesh-sdk-patch.toml
-python3 ../mesh-foundation/scripts/sdk.py patch > "$mesh_patch"
+python3 ../mesh-foundation/scripts/sdk.py patch --source crates-io > "$mesh_patch"
 cargo --config "$mesh_patch" test
+cargo --config "$mesh_patch" tree
 ```
 
-Use a clean consumer worktree for local overrides. The first run can update its
-lockfile. Inspect the resolved packages with
-`cargo --config "$mesh_patch" tree`. Before committing, remove the override and
-restore the original lockfile in that clean worktree. For a permanent upgrade,
-update all Git pins together, regenerate the unpatched lockfile and run
-`cargo test --locked`. See [Cargo patch resolution](https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html).
+For a Git consumer, omit `--source crates-io` (the default patches the canonical
+Git URL). Cargo honors patches only at the consuming workspace root. Local
+versions must satisfy the consumer's requirements: an exact alpha.1 dependency
+will not select an alpha.2 checkout. Use a matching checkout or temporarily
+change the consumer requirement. Keep absolute paths out of commits. Overrides
+can change Cargo.lock; test in a clean consumer worktree and restore its original
+lockfile before validating a real unpatched upgrade.
 
-Mesh Talk builds without access to this private repository by consuming a
-committed source snapshot. When upgrading it, export the seven crate sources
-and license from the same commit, preserve the SDK manifests' effective
-metadata when expanding inheritance, and record the full SHA in its snapshot
-README. Compare copied source bytes against the Git tree and validate the
-Mesh Talk workspace plus the affected sync, relay and compatibility tests.
+A direct path is also supported:
 
-## Cut a private release
+```toml
+mesh-identity = { package = "mesh-foundation-identity", path = "../mesh-foundation/crates/mesh-identity" }
+```
 
-1. Review the API, wire and durable compatibility changes. Maintain
-   `CHANGELOG.md` and bump the shared workspace version when warranted. Until
-   1.0, use a minor bump for incompatible changes and a patch for compatible
-   fixes. Regenerate Cargo.lock and verify the exact candidate.
-2. Run the SDK CI matrix and the independent forum tests against the exact
-   candidate SHA. For changes that affect Mesh Talk's compatibility, verify
-   the corresponding Mesh Talk snapshot and runtime scenarios.
-3. After the candidate lands on main, run `python3 scripts/sdk.py check --tag
-   vX.Y.Z` with the actual version. Create and push an annotated tag at the
-   reviewed commit. SDK CI reruns all verification, checks main ancestry, and
-   uploads a source archive, commit SHA and SHA-256 checksums to that run.
-4. Share the verified tag and SHA within the organization. Roll back a
-   consumer by restoring its previous manifest pins and lockfile. Correct a
-   faulty release with a new version and tag.
+## Version policy
 
-The CI artifact is retention-limited. The Git commit remains the canonical
-source. Configure GitHub rulesets to require SDK verification on main and
-restrict creation, movement and deletion of release tags. The workflow uses
-read-only repository permissions. It requires no publishing credentials.
+Use `0.1.0-alpha.1`, `alpha.2`, etc. for intentional integration releases. Alpha
+APIs may break; describe changes and upgrade the coordinated set together. Move
+to beta/rc when interface and compatibility criteria warrant it, then `0.1.0`.
+After stable 0.1.0, incompatible changes bump minor and compatible fixes bump
+patch. Wire/storage compatibility needs review independently of the version.
 
-## Registry migration
+Cargo prerelease requirements without `=` can advance to later prereleases and
+compatible stable releases. Build metadata (`+sha`) is ignored for requirements;
+it is not a snapshot selection mechanism. Published versions cannot be replaced.
 
-Before enabling any registry, choose an operator, define read/publish roles,
-and make every registry-facing manifest declare package metadata and versioned
-internal dependencies. A combined `path` and `version` lets Cargo resolve
-siblings locally and resolve registry copies once packaged. Test packaging
-and a clean external consumer against the intended registry. Plan dependency
-order from the Cargo graph. Identity, storage, blob and E2EE have no internal
-predecessors. Connect and replication follow identity. Mailbox follows
-identity, replication and storage. Confirm index visibility before proceeding
-to dependents. Keep publish credentials in a scoped release environment and
-give registry activation its own reviewed change.
+## Prepare and publish
+
+1. Update the shared workspace version and every exact internal version together;
+   regenerate Cargo.lock without unrelated dependency updates. Update changelog
+   and consumer migration notes. Verify the crate names are still available and
+   the account has authority to publish them.
+2. Run `python3 scripts/sdk.py check --tag v0.1.0-alpha.1` (substitute the candidate),
+   the SDK tests and dependency security checks. Inspect package contents and run:
+
+   ```sh
+   cargo publish --workspace --dry-run --locked --registry crates-io
+   ```
+
+   For local preparation only, `--allow-dirty` permits inspecting uncommitted
+   candidates. A real release must use a clean, committed and reviewed source.
+   Do not bypass package compilation with `--no-verify`.
+3. Record the exact release commit, create its matching annotated version tag,
+   and run SDK CI on that commit. Release from reviewed main history. The SDK
+   policy script checks prerelease and stable tags and internal requirements.
+4. Bootstrap with authenticated crates.io credentials and verified email.
+   GitHub login is not registry authentication. Publish prerequisites first:
+   identity, storage, E2EE, connect, replication, blob, mailbox, using their full
+   `mesh-foundation-*` package names. Cargo waits for registry index visibility.
+   The first command is:
+
+   ```sh
+   cargo publish --locked --registry crates-io -p mesh-foundation-identity
+   ```
+
+   Continue only after verifying the preceding upload. Never use a dirty tree
+   or `--no-verify` for actual upload. For subsequent coordinated uploads, the
+   pinned Cargo also supports `cargo publish --workspace`; verify its dry-run
+   before selecting it for a release.
+5. Build and run a clean external project using only registry dependencies, with
+   no Git/path patches. Confirm docs.rs builds, owners and recovery access.
+6. Create a GitHub prerelease with curated notes, full SHA, archive and checksums.
+   The SDK workflow can create a draft when dispatched on the existing version
+   tag with `create_draft_release=true`. Configure required reviewers on the
+   `release` environment; a YAML environment name alone does not enforce approval.
+
+First publication of a seven-crate workspace can take more than twenty minutes:
+crates.io allows five new crates in a burst, then one additional new crate every
+ten minutes. New versions of existing crates use a different limit (a burst of
+30, then one per minute). Follow the exact retry timestamp returned by HTTP 429;
+do not repeatedly restart the whole workspace upload. See the official
+[publishing rate limits](https://crates.io/docs/rate-limits).
+
+There is no atomic multi-crate registry transaction. On partial failure, inspect
+published versions and provenance before resuming only missing packages. Never
+skip an existing version based only on its name. If provenance is uncertain,
+stop and cut a new coordinated alpha. Roll back consumers to previous pins and
+lockfiles; yanking does not delete source or invalidate existing lockfiles.
+
+## Repeat release automation
+
+After initial manual bootstrap, configure crates.io Trusted Publishing for the
+exact GitHub repository, publishing workflow and protected environment. Prefer
+short-lived OIDC credentials over a permanent token. Grant `id-token: write`
+only to the upload job. Validate the exact tag and main ancestry, require clean
+source and successful verification, then publish and verify consumers before
+publishing release notes. The `Publish crates.io` workflow is manually dispatched from main with an existing
+version tag. It requires successful SDK checks for all three operating systems
+on that exact commit, performs a registry dry-run, then obtains an OIDC token and
+publishes. Register `.github/workflows/publish.yml` and environment `crates-io` in
+each crate's Trusted Publishing settings and configure environment reviewers.
+Until that account-side setup exists, publishing is manual; the draft source-release
+workflow does not upload Cargo packages.
+
+## Sources and launch gates
+
+[Cargo publishing](https://doc.rust-lang.org/cargo/reference/publishing.html),
+[prerelease requirements](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#pre-releases),
+[local overrides](https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html),
+[release research](release-research.md), [launch checklist](open-source-checklist.md).
+
+Current candidate verification: [alpha release record](alpha-release-verification.md).

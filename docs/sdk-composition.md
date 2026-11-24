@@ -150,6 +150,10 @@ Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
 explicit conversion when crossing profiles. A future typed common ID requires
 a migration plan for constructor names and existing callers.
 
+The bounded indexed driver and mailbox acknowledgement APIs are described in
+[bounded synchronization](bounded-sync.md). Use these for caller-scheduled turns;
+the original pull functions drain the entire captured difference.
+
 The generic pull accepts either the SDK record exchange adapter or the
 application's own fetch callback, together with a commit callback. A new record schema defines its authorization, ID verification and
 transaction rules there. The SDK supplies selection, batching, response

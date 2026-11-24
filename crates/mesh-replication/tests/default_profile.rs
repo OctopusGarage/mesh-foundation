@@ -198,3 +198,83 @@ async fn concurrent_peers_resume_from_committed_prefix_after_disconnect() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn bounded_record_turns_resume_on_the_same_authenticated_session() {
+    use mesh_replication::pull::{PullTurnLimits, pull_over_session_bounded};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let bodies = [b"first".to_vec(), b"second".to_vec()];
+    let ids: Vec<[u8; 32]> = bodies.iter().map(|b| Sha256::digest(b).into()).collect();
+    let remote = CompleteInventory::from_ids(&ids, 2).unwrap();
+    let scope = [9; 32];
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        tokio::join!(
+            async {
+                let stream = TcpStream::connect(address).await.unwrap();
+                let mut peer = PeerSession::connect(stream, &[11; 32], &public([22; 32]))
+                    .await
+                    .unwrap();
+                let mut stored = Vec::new();
+                for turn in 0..2 {
+                    let local = CompleteInventory::from_ids(&stored, 2).unwrap();
+                    let p = pull_over_session_bounded(
+                        &mut peer,
+                        scope,
+                        &remote,
+                        &local,
+                        BODY_LIMITS,
+                        PullTurnLimits {
+                            records: 1,
+                            bytes: 64,
+                            requests: 1,
+                        },
+                        |records| {
+                            for record in records {
+                                assert_eq!(
+                                    <[u8; 32]>::from(Sha256::digest(&record.body)),
+                                    record.id
+                                );
+                                stored.push(record.id);
+                            }
+                            Ok::<_, Infallible>(())
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    assert_eq!(p.committed, 1);
+                    assert_eq!(p.complete, turn == 1);
+                }
+                assert_eq!(stored.len(), 2);
+            },
+            async {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut peer =
+                    PeerSession::accept(stream, &[22; 32], |key| *key == public([11; 32]))
+                        .await
+                        .unwrap();
+                for _ in 0..2 {
+                    serve_record_request(&mut peer, scope, BODY_LIMITS, async |_, requested, _| {
+                        Ok::<_, Infallible>(
+                            requested
+                                .iter()
+                                .map(|id| {
+                                    let index =
+                                        ids.iter().position(|candidate| candidate == id).unwrap();
+                                    Record {
+                                        id: *id,
+                                        body: bodies[index].clone(),
+                                    }
+                                })
+                                .collect(),
+                        )
+                    })
+                    .await
+                    .unwrap();
+                }
+            }
+        );
+    })
+    .await
+    .unwrap();
+}
