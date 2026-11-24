@@ -12,6 +12,8 @@ Verified locally with Rust 1.99.0:
 - All-target/all-feature Clippy with warnings denied; rustdoc warnings denied.
 - Release policy tests, alpha.2 tag check, actionlint and whitespace checks.
 - Runnable bounded_sync example commits one record using two bounded requests.
+- An additional real TCP regression passes: two budgeted turns reuse the same
+  authenticated session and resume from committed inventory without omissions.
 
 The behavioral regressions include 201 records over two direct pull turns,
 aggregate bytes/RPC limits, failed and cancelled batches, compressed-index
