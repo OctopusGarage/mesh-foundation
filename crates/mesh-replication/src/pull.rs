@@ -4,7 +4,10 @@ use crate::{CompleteInventory, EventId};
 use std::collections::HashSet;
 
 mod session;
-pub use session::{MAX_RECORD_FRAME, RecordExchangeError, pull_over_session, serve_record_request};
+pub use session::{
+    MAX_RECORD_FRAME, RecordExchangeError, pull_over_session, pull_over_session_bounded,
+    serve_record_request,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PullLimits {
@@ -68,6 +71,9 @@ impl<Fetch: std::error::Error + 'static, Commit: std::error::Error + 'static> st
     }
 }
 
+/// Drain the complete difference, with per-batch limits only. For caller-scheduled
+/// work, prefer [pull_missing_bounded] and inspect its completeness result.
+///
 /// Pull IDs present remotely and absent locally, for one already authorized
 /// record scope. The fetch adapter must bound decoding before allocating
 /// response bodies. This function independently checks the returned set and
@@ -132,4 +138,95 @@ fn validate_batch(ids: &[EventId], records: &[Record], bytes: usize) -> Result<(
             .ok_or(InvalidBatch::Bytes)?;
     }
     Ok(())
+}
+
+/// Aggregate limits for one scheduling turn, independently of individual batches.
+#[derive(Clone, Copy, Debug)]
+pub struct PullTurnLimits {
+    pub records: usize,
+    pub bytes: usize,
+    pub requests: usize,
+}
+impl Default for PullTurnLimits {
+    fn default() -> Self {
+        Self {
+            records: 200,
+            bytes: 1024 * 1024,
+            requests: 8,
+        }
+    }
+}
+/// Only `complete` establishes that this captured difference was exhausted.
+/// For another turn rebuild the local inventory from durable committed records.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PullProgress {
+    pub committed: usize,
+    pub bytes: usize,
+    pub requests: usize,
+    pub complete: bool,
+}
+
+/// Pull one bounded turn. No offset is retained across changing inventories.
+/// Hosts reauthorize the scope, rebuild committed inventory on resume and yield
+/// between turns. Cancellation never acknowledges an uncommitted fetched batch.
+pub async fn pull_missing_bounded<Fetch, Commit>(
+    remote: &CompleteInventory,
+    local: &CompleteInventory,
+    batch: PullLimits,
+    turn: PullTurnLimits,
+    mut fetch: impl AsyncFnMut(&[EventId], usize) -> Result<Vec<Record>, Fetch>,
+    mut commit: impl FnMut(&[Record]) -> Result<(), Commit>,
+) -> Result<PullProgress, PullError<Fetch, Commit>> {
+    let mut progress = PullProgress::default();
+    if batch.records_per_batch == 0
+        || batch.bytes_per_batch == 0
+        || turn.records == 0
+        || turn.bytes == 0
+        || turn.requests == 0
+    {
+        return Err(PullError {
+            committed: 0,
+            kind: PullErrorKind::InvalidLimits,
+        });
+    }
+    let mut missing = remote.missing_from(local).peekable();
+    loop {
+        if missing.peek().is_none() {
+            progress.complete = true;
+            return Ok(progress);
+        }
+        if progress.committed == turn.records
+            || progress.bytes == turn.bytes
+            || progress.requests == turn.requests
+        {
+            return Ok(progress);
+        }
+        let ids: Vec<_> = missing
+            .by_ref()
+            .take(
+                batch
+                    .records_per_batch
+                    .min(turn.records - progress.committed),
+            )
+            .collect();
+        let budget = batch.bytes_per_batch.min(turn.bytes - progress.bytes);
+        progress.requests += 1;
+        let records = fetch(&ids, budget).await.map_err(|error| PullError {
+            committed: progress.committed,
+            kind: PullErrorKind::Fetch(error),
+        })?;
+        validate_batch(&ids, &records, budget).map_err(|error| PullError {
+            committed: progress.committed,
+            kind: match error {
+                InvalidBatch::Records => PullErrorKind::UnexpectedRecords,
+                InvalidBatch::Bytes => PullErrorKind::BodyLimit,
+            },
+        })?;
+        commit(&records).map_err(|error| PullError {
+            committed: progress.committed,
+            kind: PullErrorKind::Commit(error),
+        })?;
+        progress.bytes += records.iter().map(|r| r.body.len()).sum::<usize>();
+        progress.committed += records.len();
+    }
 }

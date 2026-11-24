@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add total-turn pull budgets and an indexed range synchronization driver.
+- Add cancellation-safe range checkpoints, compressed summaries and dedicated frames.
+- Add bounded mailbox retrieval with atomic body/cursor acknowledgement and explicit reset.
+- Prepare coordinated 0.1.0-alpha.2 development; published alpha.1 remains immutable.
+
 ## 0.1.0-alpha.1
 
 - Prepare the first coordinated registry alpha under `mesh-foundation-*` names.

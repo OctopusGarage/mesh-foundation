@@ -549,7 +549,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "mesh-foundation-blob"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "aes-gcm 0.11.1",
  "futures-util",
@@ -564,7 +564,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-connect"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "bincode",
  "futures-util",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-e2ee"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-identity"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "bincode",
  "ed25519-dalek",
@@ -611,7 +611,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-mailbox"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-replication"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "bincode",
  "hex",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "mesh-foundation-storage"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",

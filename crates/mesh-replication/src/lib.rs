@@ -185,3 +185,9 @@ pub mod pull;
 
 /// Default scoped inventory exchange for new applications.
 pub mod inventory_session;
+
+/// Indexed, bounded range reconciliation.
+pub mod range;
+
+/// High-level budgeted range reconciliation and record retrieval.
+pub mod driver;

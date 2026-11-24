@@ -18,7 +18,7 @@ test-observability = []
 [dependencies]
 bincode = { version = "1.3", optional = true }
 futures-util = "0.3"
-mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.1", path = "../mesh-identity", optional = true }
+mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.2", path = "../mesh-identity", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 if-addrs = "0.15"
 log = "0.4"
@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["io-util", "net", "sync"] }
 
 [dev-dependencies]
 hex = "0.4"
-mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.1", path = "../mesh-identity", features = ["test-observability"] }
+mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.2", path = "../mesh-identity", features = ["test-observability"] }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 x25519-dalek = { version = "3", features = ["static_secrets"] }
 

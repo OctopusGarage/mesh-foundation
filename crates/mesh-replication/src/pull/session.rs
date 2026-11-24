@@ -87,6 +87,50 @@ pub async fn pull_over_session<S: ReconciliationSession, Commit>(
     .await
 }
 
+/// Bounded-turn counterpart of [pull_over_session]. Resume from fresh durable inventory.
+pub async fn pull_over_session_bounded<S: ReconciliationSession, Commit>(
+    session: &mut S,
+    scope: [u8; 32],
+    remote: &CompleteInventory,
+    local: &CompleteInventory,
+    limits: PullLimits,
+    turn: super::PullTurnLimits,
+    commit: impl FnMut(&[Record]) -> Result<(), Commit>,
+) -> Result<super::PullProgress, PullError<RecordExchangeError<S::Error>, Commit>> {
+    if !valid_limits(limits) {
+        return Err(PullError {
+            committed: 0,
+            kind: PullErrorKind::InvalidLimits,
+        });
+    }
+    super::pull_missing_bounded(
+        remote,
+        local,
+        limits,
+        turn,
+        async |ids, budget| {
+            let mut request = Vec::with_capacity(REQUEST_HEADER + ids.len() * 32);
+            request.extend_from_slice(REQUEST);
+            request.extend_from_slice(&scope);
+            request.extend_from_slice(&(budget as u32).to_be_bytes());
+            for id in ids {
+                request.extend_from_slice(id);
+            }
+            session
+                .send(&request)
+                .await
+                .map_err(RecordExchangeError::Transport)?;
+            let response = session
+                .recv()
+                .await
+                .map_err(RecordExchangeError::Transport)?;
+            decode_response(&response, &scope, ids.len(), budget)
+        },
+        commit,
+    )
+    .await
+}
+
 /// Serve one request for an authorized scope. The loader gets the authenticated
 /// peer, requested IDs and byte budget. It must recheck current authorization
 /// before returning records. After an exchange error, discard the session.

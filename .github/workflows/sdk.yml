@@ -45,6 +45,7 @@ jobs:
       - run: cargo test --locked -p mesh-foundation-replication --no-default-features
       - run: cargo run --locked -p mesh-foundation-identity --example device_identity
       - run: cargo run --locked -p mesh-foundation-replication --no-default-features --example inventory
+      - run: cargo run --locked -p mesh-foundation-replication --no-default-features --example bounded_sync
       - name: Build API documentation
         env:
           RUSTDOCFLAGS: -D warnings
