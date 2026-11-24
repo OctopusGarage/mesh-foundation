@@ -1,7 +1,8 @@
 # Alpha release verification
 
 Candidate: seven mesh-foundation-* packages at 0.1.0-alpha.1.
-Date: 2026-11-24. Status: prepared; no registry upload completed yet.
+Date: 2026-11-24. Status: registry upload attempted and blocked by unverified crates.io account email.
+No package has been published.
 
 ## Completed local checks
 
@@ -27,12 +28,27 @@ the home-directory ancestry and using an isolated Cargo home with no mirror
 configuration. The user's global config was not modified. Real upload should use
 a clean checkout in that isolated location and the official crates.io registry.
 
+## GitHub verification and release identity
+
+Release commit: `2812256454ee7dbbc7a2e9bf73bfeb51ca570c61`.
+The annotated tag `v0.1.0-alpha.1` and main were pushed successfully over existing
+SSH access after merging the remote main update. The merge changed no files.
+The initial HTTPS push was rejected for missing workflow scope; no force push
+was used.
+
+The [three-platform SDK run](https://github.com/OctopusGarage/mesh-foundation/actions/runs/45350957506)
+and [dependency security run](https://github.com/OctopusGarage/mesh-foundation/actions/runs/45350957624)
+completed successfully. Final clean-source workspace dry-run passed. All seven
+unpacked packages contain the matching clean release SHA, README and LICENSE.
+
 ## Actual publication gates
 
 The user approved the public registry and new package names. A crates.io bootstrap
-credential is still required through the secure secret UI. Before actual upload,
-commit the verified candidate, identify the exact release SHA/tag, package the
-clean source, recheck names and credentials, and run the registry dry-run there.
+credential was supplied through the secure secret UI. The real workspace publish
+completed package compilation, then crates.io rejected the first upload with
+HTTP 400: a verified email address is required. No uploads succeeded. The account
+owner must verify their email at https://crates.io/settings/profile before retry.
+Credentials were not committed to source or stored in Cargo configuration.
 After upload, verify registry-only consumption and docs.rs. Do not present local
 patch success as evidence that registry installation already works.
 
