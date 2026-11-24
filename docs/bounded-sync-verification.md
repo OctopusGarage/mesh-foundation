@@ -31,8 +31,9 @@ finding was addressed by including DriverProgress in invalidation errors.
 
 Direct bounded pull still takes precomputed complete inventories. Use the indexed
 driver to avoid full remote inventory exchange. Range discovery is inbound
-coverage, not bidirectional equality. The index is in-memory; hosts own durable
-index maintenance, bounded rebuilds and resource accounting. Local summary counts
+coverage, not bidirectional equality. The bundled RangeIndex is in-memory;
+RangeRead hosts may supply stored snapshots and own durable index maintenance,
+bounded rebuilds and resource accounting. Local summary counts
 are not a measurement of a remote SQL backend's rows or disk I/O.
 
 Additional leaf-batch tests verify that one RPC discovers 32 missing IDs and
