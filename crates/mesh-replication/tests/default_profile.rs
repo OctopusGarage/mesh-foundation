@@ -102,3 +102,99 @@ async fn default_inventory_and_record_exchange_over_authenticated_tcp() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn concurrent_peers_resume_from_committed_prefix_after_disconnect() {
+    use std::time::Duration;
+    use tokio::{
+        task::{JoinSet, LocalSet},
+        time::sleep,
+    };
+
+    const PEERS: u8 = 6;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let scope = [7; 32];
+    const EXPECTED: [[u8; 32]; 3] = [[1; 32], [2; 32], [3; 32]];
+
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        LocalSet::new().run_until(async {
+            let mut tasks = JoinSet::new();
+            for index in 1..=PEERS {
+                tasks.spawn_local(async move {
+                    let remote = CompleteInventory::from_ids(&EXPECTED, EXPECTED.len()).unwrap();
+                    let mut stored = Vec::new();
+
+                    for attempt in 0..2 {
+                        let mut peer = PeerSession::connect(
+                            TcpStream::connect(address).await.unwrap(),
+                            &[index; 32],
+                            &public([22; 32]),
+                        )
+                        .await
+                        .unwrap();
+                        let local = CompleteInventory::from_ids(&stored, EXPECTED.len()).unwrap();
+                        let outcome = pull_over_session(
+                            &mut peer,
+                            scope,
+                            &remote,
+                            &local,
+                            BODY_LIMITS,
+                            |records| {
+                                let record = &records[0];
+                                assert_eq!(record.body.as_slice(), &record.id[..1]);
+                                stored.push(record.id);
+                                Ok::<_, Infallible>(())
+                            },
+                        )
+                        .await;
+                        if attempt == 0 {
+                            assert_eq!(outcome.unwrap_err().committed, 1);
+                            assert_eq!(stored, EXPECTED[..1]);
+                        } else {
+                            assert_eq!(outcome.unwrap(), 2);
+                            assert_eq!(stored, EXPECTED);
+                        }
+                    }
+                });
+            }
+
+            let allowed: Vec<_> = (1..=PEERS).map(|index| public([index; 32])).collect();
+            let mut attempts = std::collections::HashMap::new();
+            for _ in 0..PEERS * 2 {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut peer = PeerSession::accept(stream, &[22; 32], |key| allowed.contains(key))
+                    .await
+                    .unwrap();
+                let attempt = attempts.entry(*peer.peer_key()).or_insert(0);
+                let remaining = if *attempt == 0 {
+                    &EXPECTED[..1]
+                } else {
+                    &EXPECTED[1..]
+                };
+                *attempt += 1;
+                tasks.spawn_local(async move {
+                    for id in remaining {
+                        serve_record_request(&mut peer, scope, BODY_LIMITS, async |_, ids, _| {
+                            assert_eq!(ids, &[*id]);
+                            sleep(Duration::from_millis(20 + u64::from(id[0]) * 10)).await;
+                            Ok::<_, Infallible>(vec![Record {
+                                id: *id,
+                                body: vec![id[0]],
+                            }])
+                        })
+                        .await
+                        .unwrap();
+                    }
+                    // The first connection is lost after one acknowledged batch.
+                });
+            }
+            while let Some(result) = tasks.join_next().await {
+                result.unwrap();
+            }
+        }),
+    )
+    .await
+    .unwrap();
+}
