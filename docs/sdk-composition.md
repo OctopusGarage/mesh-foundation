@@ -16,6 +16,21 @@ New consumers can opt into a smaller dependency graph.
 | Offline custody and incremental retrieval | `mesh-mailbox` | `mesh-identity`, `mesh-replication/legacy-wire` and `mesh-storage`. |
 | Attachment chunks and stream verification | `mesh-blob` | None |
 
+Arrows point from a dependent to its dependency. Dashed arrows are selected
+by a feature. The mailbox requests the legacy Event profile explicitly.
+
+```mermaid
+flowchart LR
+    C[mesh-connect] -. signed-discovery .-> I[mesh-identity]
+    R[mesh-replication] -. legacy-wire .-> I
+    R -. mesh-connect .-> C
+    M[mesh-mailbox] --> I
+    M -->|legacy-wire| R
+    M --> S[mesh-storage]
+    E[mesh-e2ee]
+    B[mesh-blob]
+```
+
 Cargo unifies features. Turning off defaults in one declaration does not turn off
 a feature requested by another dependency. Inspect the resolved graph with
 `cargo tree -e features`. See [SDK delivery](sdk-delivery.md) for Git pins.
@@ -28,6 +43,21 @@ Enable `mesh-replication/mesh-connect` to pass a
 The session authenticates a previously trusted peer static key and supplies
 encrypted, ordered frames over the caller's byte stream. Pick the key before
 dialing. After an interrupted frame, create a new session.
+
+For an SDK sibling checkout, a consumer that uses a pinned session and its own
+record schema can start with:
+
+```toml
+[dependencies]
+mesh-connect = { path = "../mesh-foundation/crates/mesh-connect", default-features = false }
+mesh-replication = { path = "../mesh-foundation/crates/mesh-replication", default-features = false, features = ["mesh-connect"] }
+```
+
+A consumer testing a newly introduced feature should pin a revision that
+declares it, or use direct path dependencies for all SDK crates in a disposable
+checkout. An override against an older locked Git revision can fail during
+feature resolution. Restore the consumer's Git pins and lockfile before
+committing permanent changes.
 
 1. Give the connection a reliable ordered stream such as TCP. Other ordered
    byte streams can use the same session. A differently framed carrier
@@ -81,3 +111,25 @@ when interoperability with that protocol is required.
 For new typed entry points, prefer domain names over protocol abbreviations
 and document the state transition an operation confirms. Keep existing public
 names and compatible wire tags until there is a tested migration path.
+
+
+## Further interface work
+
+The optional session adapter removes repeated peer, send and receive forwarding
+without introducing a shared transport crate. Keep the carrier swappable at the
+existing session interface. Keep the mailbox's concrete envelope for the
+existing wire format until another application needs a different signed record
+schema behind the same retention lifecycle.
+
+The next public naming improvement is an inventory-oriented entry point for new
+consumers. The low-level Have functions expose framing decisions intentionally
+because a custom protocol needs a codec. A convenience layer should remove
+actual call-order duplication across two consumers before it adds vocabulary.
+Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
+explicit conversion when crossing profiles. A future typed common ID requires
+a migration plan for constructor names and existing callers.
+
+A reusable end-to-end replication protocol for a new record schema still needs
+a scoped record authorization and commit contract. A transport adapter alone
+does not provide this. Mesh Talk and Mesh Forum currently exercise the shared
+legacy codec or bounded inventory operations with different session adapters.
