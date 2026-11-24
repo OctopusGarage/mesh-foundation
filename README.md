@@ -1,6 +1,62 @@
 # Mesh Foundation
 
-Rust libraries for peer connectivity and decentralized replication.
+[![SDK](https://github.com/OctopusGarage/mesh-foundation/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/OctopusGarage/mesh-foundation/actions/workflows/sdk.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Rust building blocks for authenticated peer connectivity, bounded replication,
+identity, encrypted content, durable storage, offline mailboxes and blob transfer.
+Compose the crates you need; your application controls trust, authorization and lifecycle.
+
+**Status:** evolving 0.x SDK, currently delivered through pinned Git revisions.
+The first registry candidate is `0.1.0-alpha.1`; see the delivery guide for actual
+publication status and installation. APIs may change; there is no independent
+security-audit claim. Linux, macOS and Windows are covered by the SDK CI matrix.
+The tested toolchain is Rust 1.99.0; an MSRV has not been established.
+
+[Quick start](#quick-start) · [Composition](docs/sdk-composition.md) ·
+[Delivery](docs/sdk-delivery.md) · [Contributing](CONTRIBUTING.md) ·
+[Security](SECURITY.md) · [Changelog](CHANGELOG.md)
+
+## Quick start
+
+Install Rust through rustup and Python 3, then run from this checkout:
+
+```sh
+cargo run --locked -p mesh-foundation-identity --example device_identity
+cargo run --locked -p mesh-foundation-replication --no-default-features --example inventory
+cargo test --locked --workspace
+cargo doc --locked --workspace --all-features --no-deps --open
+```
+
+The examples demonstrate device signing and bounded inventory comparison, with
+assertions for rejected tampering and mismatched sets. They do not establish
+application trust or authorization. See [security boundaries](docs/security-model.md).
+
+For a development snapshot, use the repository Git URL and pin all SDK crates
+to the same full commit SHA using `rev`. See the [consumer guide](docs/sdk-delivery.md#develop-and-consume)
+for credential handling, local overrides and upgrades. Until public launch,
+GitHub read access is required.
+
+## Crates and features
+
+Crate-local READMEs describe entry points and feature choices. Build rustdoc locally
+using the command above; registry package names use the `mesh-foundation-*` prefix.
+
+| Crate | Default features | Optional integration |
+| --- | --- | --- |
+| [mesh-connect](crates/mesh-connect/README.md) | `signed-discovery` | Disable defaults for session primitives without signed discovery |
+| [mesh-replication](crates/mesh-replication/README.md) | `legacy-wire` | `mesh-connect` binds transport-independent replication to peer sessions |
+| [mesh-blob](crates/mesh-blob/README.md) | None | `mesh-connect` enables session transfer adapters |
+| [mesh-identity](crates/mesh-identity/README.md) | None | Device and account signing identities |
+| [mesh-e2ee](crates/mesh-e2ee/README.md) | None | Ratchet and sender-key primitives |
+| [mesh-storage](crates/mesh-storage/README.md) | None | Encrypted record logs |
+| [mesh-mailbox](crates/mesh-mailbox/README.md) | None | Opaque mailbox envelopes and durable spool |
+
+`test-observability`, where available, is intended for compatibility tests.
+Cargo unifies features across a dependency graph; check the resolved graph when
+combining adapters.
+
+## Integration overview
 
 See [SDK development and delivery](docs/sdk-delivery.md) for dependency pins,
 local overrides, CI verification and release steps. See [SDK composition](docs/sdk-composition.md)
@@ -55,3 +111,11 @@ accepted event and its updated receive state across failures and restarts.
 The Mesh Talk-specific mailbox envelope uses the device identities in
 `mesh-identity` and the compatible signed event codec under
 `mesh-replication::legacy_event`. It can be carried by any suitable transport.
+
+## Community and license
+
+See [Contributing](CONTRIBUTING.md), [Support](SUPPORT.md) and
+[Governance](GOVERNANCE.md) for collaboration and maintenance expectations.
+Licensed under [MIT](LICENSE). Public-launch preparation is tracked in the
+[readiness checklist](docs/open-source-checklist.md); local results are recorded in
+[verification evidence](docs/open-source-verification.md).

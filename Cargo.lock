@@ -548,13 +548,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
-name = "mesh-blob"
-version = "0.1.0"
+name = "mesh-foundation-blob"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aes-gcm 0.11.1",
  "futures-util",
- "mesh-connect",
- "mesh-identity",
+ "mesh-foundation-connect",
+ "mesh-foundation-identity",
  "rand_core 0.6.4",
  "sha2 0.10.9",
  "tempfile",
@@ -563,15 +563,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-connect"
-version = "0.1.0"
+name = "mesh-foundation-connect"
+version = "0.1.0-alpha.1"
 dependencies = [
  "bincode",
  "futures-util",
  "hex",
  "if-addrs",
  "log",
- "mesh-identity",
+ "mesh-foundation-identity",
  "serde",
  "snow",
  "socket2",
@@ -581,8 +581,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-e2ee"
-version = "0.1.0"
+name = "mesh-foundation-e2ee"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",
@@ -596,8 +596,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-identity"
-version = "0.1.0"
+name = "mesh-foundation-identity"
+version = "0.1.0-alpha.1"
 dependencies = [
  "bincode",
  "ed25519-dalek",
@@ -610,16 +610,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-mailbox"
-version = "0.1.0"
+name = "mesh-foundation-mailbox"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",
  "hkdf",
- "mesh-connect",
- "mesh-identity",
- "mesh-replication",
- "mesh-storage",
+ "mesh-foundation-connect",
+ "mesh-foundation-identity",
+ "mesh-foundation-replication",
+ "mesh-foundation-storage",
  "rand_core 0.6.4",
  "serde",
  "sha2 0.10.9",
@@ -630,14 +630,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-replication"
-version = "0.1.0"
+name = "mesh-foundation-replication"
+version = "0.1.0-alpha.1"
 dependencies = [
  "bincode",
  "hex",
  "log",
- "mesh-connect",
- "mesh-identity",
+ "mesh-foundation-connect",
+ "mesh-foundation-identity",
  "serde",
  "sha2 0.10.9",
  "tokio",
@@ -645,8 +645,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-storage"
-version = "0.1.0"
+name = "mesh-foundation-storage"
+version = "0.1.0-alpha.1"
 dependencies = [
  "aes-gcm 0.11.1",
  "bincode",

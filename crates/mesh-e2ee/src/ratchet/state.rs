@@ -330,7 +330,7 @@ impl RatchetState {
             .expect("ratchet state serializes")
     }
 
-    /// Reconstruct a session from [`serialize`] output. `None` if malformed.
+    /// Reconstruct a session from [`Self::serialize`] output. `None` if malformed.
     /// Strict parse (`reject_trailing_bytes`): the serialized session is secret
     /// key material stored encrypted at rest; it must STAY strict, and grows only
     /// via a new version, never by tolerating extra bytes.
