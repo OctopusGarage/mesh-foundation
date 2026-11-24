@@ -198,13 +198,18 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             .open(path)
         {
             Ok(mut file) => {
+                let salt = generate_salt();
+                let key = match initialize_header(&mut file, magic, &salt, derive) {
+                    Ok(key) => key,
+                    Err(error) => {
+                        drop(file);
+                        // This path was just created under the caller's exclusive lease.
+                        std::fs::remove_file(path)?;
+                        return Err(error);
+                    }
+                };
                 #[cfg(windows)]
                 let repair = OpenOptions::new().write(true).open(path)?;
-                let salt = generate_salt();
-                let key = derive(&salt)?;
-                file.write_all(magic)?;
-                file.write_all(&salt)?;
-                sync_file(&file)?;
                 sync_parent(path)?;
                 Ok(Self {
                     file,
@@ -590,6 +595,19 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
         }
         Ok(())
     }
+}
+
+fn initialize_header(
+    file: &mut File,
+    magic: &[u8; 6],
+    salt: &[u8; SALT_SIZE],
+    derive: impl FnOnce(&[u8; SALT_SIZE]) -> Result<EncryptionKey, crate::StorageError>,
+) -> Result<EncryptionKey, RecordLogError> {
+    let key = derive(salt)?;
+    file.write_all(magic)?;
+    file.write_all(salt)?;
+    sync_file(file)?;
+    Ok(key)
 }
 
 fn sync_file(file: &File) -> std::io::Result<()> {
