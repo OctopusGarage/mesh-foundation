@@ -62,17 +62,17 @@ pub async fn send_inventory<S: ReconciliationSession>(
         return Err(HaveError::Limit);
     }
     let mut pages = inventory.ids.chunks(limits.ids_per_frame).peekable();
+    let capacity = HEADER + inventory.len().min(limits.ids_per_frame) * 32;
+    let mut bytes = Vec::with_capacity(capacity);
     loop {
         let ids = pages.next().unwrap_or_default();
         let more = pages.peek().is_some();
-        let mut bytes = Vec::with_capacity(HEADER + ids.len() * 32);
+        authorize().map_err(HaveError::Exchange)?;
+        bytes.clear();
         bytes.extend_from_slice(MAGIC);
         bytes.extend_from_slice(&scope);
         bytes.extend_from_slice(&[sender as u8, u8::from(more)]);
-        for id in ids {
-            bytes.extend_from_slice(id);
-        }
-        authorize().map_err(HaveError::Exchange)?;
+        bytes.extend_from_slice(ids.as_flattened());
         session.send(&bytes).await.map_err(HaveError::Exchange)?;
         if !more {
             return Ok(());
@@ -194,5 +194,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(actual.fingerprint(), source.fingerprint());
+    }
+
+    #[tokio::test]
+    async fn short_terminal_page_has_no_leftover_ids_and_denial_stops_the_exchange() {
+        let scope = [7; 32];
+        let sender = InventorySender::Responder;
+        let limits = || HaveLimits {
+            ids_per_frame: 2,
+            frames: 2,
+            total_ids: 3,
+        };
+        let source = CompleteInventory::from_ids(&[[1; 32], [2; 32], [3; 32]], 3).unwrap();
+        let mut frames = Frames::default();
+        send_inventory(&mut frames, scope, sender, &source, limits(), || Ok(()))
+            .await
+            .unwrap();
+        let [first, last] = frames.0.make_contiguous() else {
+            panic!("expected two pages");
+        };
+        assert_eq!(first.len(), HEADER + 64);
+        assert_eq!(last.len(), HEADER + 32);
+        let terminal = decode::<&str>(last, &scope, sender, 2).unwrap();
+        assert_eq!(terminal.ids, [[3; 32]]);
+        assert!(!terminal.more);
+
+        let mut frames = Frames::default();
+        let mut authorized = false;
+        let result = send_inventory(&mut frames, scope, sender, &source, limits(), || {
+            if std::mem::replace(&mut authorized, true) {
+                Err("revoked")
+            } else {
+                Ok(())
+            }
+        })
+        .await;
+        assert!(matches!(result, Err(HaveError::Exchange("revoked"))));
+        assert_eq!(frames.0.len(), 1);
     }
 }
