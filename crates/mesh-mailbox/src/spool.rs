@@ -70,10 +70,15 @@ enum Record {
     },
 }
 
+struct Entry {
+    event: Event,
+    wire_bytes: u64,
+}
+
 pub struct Spool {
     log: EncryptedRecordLog<Record>,
     cursor: MailboxCursor,
-    entries: Vec<Event>,
+    entries: Vec<Entry>,
     positions: HashMap<EventId, usize>,
     bytes: u64,
     limits: CapacityLimits,
@@ -178,12 +183,12 @@ impl Spool {
                             bytes = bytes
                                 .checked_add(size)
                                 .ok_or(SpoolError::CounterExhausted)?;
-                            Ok(())
+                            Ok(size)
                         }) {
-                            Ok(()) => {
+                            Ok(wire_bytes) => {
                                 first_seen = Some(time);
                                 positions.insert(event.id, entries.len());
-                                entries.push(event);
+                                entries.push(Entry { event, wire_bytes });
                                 return Ok(());
                             }
                             Err(error) => error,
@@ -267,6 +272,14 @@ impl Spool {
 
     /// The host authenticates the depositor before calling this method.
     pub fn deposit(&mut self, event: Event, now: u64) -> Result<Deposit, SpoolError> {
+        // Only byte-for-byte equivalent, previously authenticated entries can
+        // skip verification. A matching ID alone cannot authenticate a retry.
+        if !self.expired(now)
+            && let Some(&position) = self.positions.get(&event.id)
+            && self.entries[position].event == event
+        {
+            return Ok(Deposit::AlreadyStored);
+        }
         if !valid_envelope(self.cursor.conversation, &event) {
             return Err(SpoolError::InvalidRecord);
         }
@@ -295,7 +308,10 @@ impl Spool {
             event: event.clone(),
         })?;
         self.positions.insert(event.id, self.entries.len());
-        self.entries.push(event);
+        self.entries.push(Entry {
+            event,
+            wire_bytes: size,
+        });
         self.bytes += size;
         self.cursor.first_seen = Some(first_seen);
         self.cursor.revision = next;
@@ -342,11 +358,11 @@ impl MailboxStore for SpoolView<'_> {
             .entries
             .get(lower..upper)
             .ok_or(SpoolError::StaleCursor)?;
-        for (offset, event) in window.iter().enumerate().take(limit + 1) {
+        for (offset, entry) in window.iter().enumerate().take(limit + 1) {
             if !scan.accept_row() {
                 break;
             }
-            scan.push((lower + offset) as i64, event.id)?;
+            scan.push((lower + offset) as i64, entry.event.id)?;
         }
         Ok(scan.finish())
     }
@@ -377,14 +393,14 @@ impl MailboxStore for SpoolView<'_> {
                 .copied()
                 .filter(|&position| (position as i64) < cursor.after)
                 .ok_or(SpoolError::StaleCursor)?;
-            let event = &self.spool.entries[position];
+            let entry = &self.spool.entries[position];
             bytes = bytes
-                .checked_add(encoded_size(event)?)
+                .checked_add(entry.wire_bytes)
                 .ok_or(SpoolError::CounterExhausted)?;
             if bytes > max_bytes as u64 {
                 return Err(SpoolError::Limit);
             }
-            selected.push(event);
+            selected.push(&entry.event);
         }
         Ok(selected.into_iter().cloned().collect())
     }

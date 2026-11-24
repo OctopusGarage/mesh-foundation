@@ -611,6 +611,7 @@ dependencies = [
  "aes-gcm 0.11.1",
  "bincode",
  "hkdf",
+ "mesh-connect",
  "mesh-identity",
  "mesh-replication",
  "mesh-storage",
@@ -618,6 +619,7 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "tempfile",
+ "tokio",
  "x25519-dalek",
  "zeroize",
 ]
