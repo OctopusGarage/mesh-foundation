@@ -180,3 +180,37 @@ validation and durable-progress accounting.
   the same negotiated scope. Recheck authorization for each request. After
   interrupted I/O, reopen the stream and resume from the last cursor whose
   selected bodies the consumer committed.
+
+## Sparse blob reception
+
+Authenticate the object manifest and bind a private staging store to that exact
+version before constructing a `SparseBlobReceiver`. Use `restore` to rebuild
+progress from staged chunks. Intersect `missing` with each authorized source's
+advertised availability and exclude requests already in flight. Feed authenticated,
+decrypted replies through `accept`; only successful durable writes advance
+progress. Call `verify` before publishing the assembled object. The host owns
+the transfer protocol, request concurrency, and final publication.
+
+Use `DirectoryChunkStore` for private file-per-chunk staging, with one writer
+per object version. `SparseBlobReceiver::download` rotates across the supplied
+sources, bounds concurrent requests, and retries other sources for an
+unavailable or invalid chunk. A completed request frees its slot immediately,
+so a slow source does not hold up unrelated requests. If every source fails
+for one chunk, in-flight requests can still commit before the error returns.
+Hosts supply authorized availability snapshots.
+Reopen the staging directory and call `restore` before resuming.
+
+With the `mesh-connect` feature, a host uses `SessionChunkSource` on a
+dedicated authenticated session and dispatches `serve_chunk` at providers.
+The loader enforces current object access on each request, regardless of
+whether the provider is an app or a relay. For private objects, providers
+serve indexed ciphertext and the receiver wraps each source in
+`EncryptedChunkSource`. Keep the plaintext staging directory private.
+The transport's frame ceiling includes the AEAD tag, so choose a chunk
+layout that fits before publishing a manifest.
+
+On the dedicated session, `SessionChunkSource::discover` fetches the
+availability snapshot in bounded pages before requesting data. Providers
+dispatch both request types via `serve_request` and check object access
+independently for availability and content. The host still discovers
+candidate peers and determines which peer identities it can contact.

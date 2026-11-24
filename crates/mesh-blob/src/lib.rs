@@ -29,8 +29,16 @@ use rand_core::RngCore;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
+mod download;
+pub use download::{ChunkSource, DownloadError, EncryptedChunkError, EncryptedChunkSource};
 mod receive;
+#[cfg(feature = "mesh-connect")]
+pub mod session;
+mod sparse;
 pub use receive::{BlobLayout, BlobVerifier};
+pub use sparse::{
+    ChunkAcceptance, ChunkStore, DirectoryChunkStore, SparseBlobReceiver, SparseReceiveError,
+};
 
 const KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 12;
