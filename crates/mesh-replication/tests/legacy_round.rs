@@ -12,6 +12,7 @@ use mesh_replication::{
 use std::{
     cell::RefCell,
     collections::{HashSet, VecDeque},
+    rc::Rc,
 };
 
 #[derive(Default)]
@@ -42,6 +43,8 @@ struct Replica {
     fingerprint: Option<[u8; 32]>,
     accepted: RefCell<HashSet<EventId>>,
     exports: Vec<Event>,
+    deny_inventory: bool,
+    reservation: Rc<()>,
 }
 struct FixtureHave(Vec<EventId>);
 
@@ -119,7 +122,7 @@ impl RoundBackend<RoundFault> for Replica {
     fn retain_quiet_comparison(&self, _: &(), _: QuietComparison) -> Result<(), RoundFault> {
         Ok(())
     }
-    type HaveReservation = ();
+    type HaveReservation = Rc<()>;
 
     fn have_limits(&self) -> HaveLimits {
         HaveLimits {
@@ -136,14 +139,17 @@ impl RoundBackend<RoundFault> for Replica {
         FixtureHave(self.accepted.borrow().iter().copied().collect())
     }
 
-    fn reserve_remote_have(&self) -> Result<(), RoundFault> {
-        Ok(())
+    fn reserve_remote_have(&self) -> Result<Self::HaveReservation, RoundFault> {
+        if self.deny_inventory {
+            return Err(RoundFault::NoProgress);
+        }
+        Ok(Rc::clone(&self.reservation))
     }
 
     fn collect_remote_have(
         &self,
         ids: Vec<EventId>,
-        _: (),
+        _: Self::HaveReservation,
         _: bool,
     ) -> Result<Self::RemoteHave, RoundFault> {
         Ok(Box::new(ids.into_iter().collect()))
@@ -392,4 +398,41 @@ fn have_codec_checks_role_and_scope() {
         HaveSender::Requester.decode(scope, &bytes),
         Err(RoundFault::UnexpectedMessage)
     ));
+}
+
+#[tokio::test]
+async fn responder_reserves_before_reading_and_releases_on_invalid_inventory() {
+    use mesh_replication::legacy_wire::SyncRequest;
+
+    let scope = ConversationId::new([7; 32]);
+    let request = legacy_wire::encode(&SyncWire::Request(SyncRequest {
+        conversation: scope,
+        have: vec![],
+    }))
+    .unwrap();
+    let mut channel = incoming([SyncWire::RespHave(HaveChunk {
+        conversation: scope,
+        ids: vec![],
+        more: false,
+    })]);
+    let mut replica = Replica {
+        deny_inventory: true,
+        ..Replica::default()
+    };
+
+    assert_eq!(
+        serve(&mut channel, &replica, &request).await,
+        Err(RoundFault::NoProgress)
+    );
+    assert_eq!(channel.incoming.len(), 1);
+    assert!(channel.sent.is_empty());
+
+    replica.deny_inventory = false;
+    assert_eq!(
+        serve(&mut channel, &replica, &request).await,
+        Err(RoundFault::UnexpectedMessage)
+    );
+    assert!(channel.incoming.is_empty());
+    assert!(channel.sent.is_empty());
+    assert_eq!(Rc::strong_count(&replica.reservation), 1);
 }
