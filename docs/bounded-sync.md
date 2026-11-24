@@ -36,8 +36,9 @@ rebuild free or provide a persistent database index automatically.
 `range::Checkpoint` discovers only remote IDs absent locally. Scope, authorization
 identity, local root/revision and pinned remote view invalidate stale progress.
 A complete inbound comparison does not establish bidirectional convergence or
-message delivery. Single-record ranges carry a validated singleton proof to avoid
-256 separate prefix requests for one missing record.
+message delivery. Small ranges carry up to 32 sorted, unique IDs with a verified canonical digest
+in a frame capped at 1,166 bytes. Single-record ranges retain a singleton shortcut.
+This avoids a separate RPC for every missing message or every prefix bit.
 
 `range::query_summary` and `serve_summary` operate on an already negotiated,
 dedicated authenticated range session. They use distinct bounded frame profiles,

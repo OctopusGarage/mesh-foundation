@@ -269,6 +269,7 @@ pub struct SummaryFrame {
     pub prefix: Prefix,
     pub summary: Summary,
     pub singleton: Option<EventId>,
+    pub leaves: Vec<EventId>,
 }
 impl SummaryFrame {
     pub fn encode(&self) -> Vec<u8> {
@@ -283,12 +284,16 @@ impl SummaryFrame {
         if let Some(id) = self.singleton {
             bytes.extend_from_slice(&id);
         }
+        for id in &self.leaves {
+            bytes.extend_from_slice(id);
+        }
         bytes
     }
-    /// Fixed length bounds allocation before decode. The caller authorizes the
+    /// Bounded frame length limits allocation before decode. The caller authorizes the
     /// view token independently; it is not a remote authorization grant.
     pub fn decode(bytes: &[u8], scope: [u8; 32], view: [u8; 32]) -> Option<Self> {
-        if ![142, 174].contains(&bytes.len())
+        if !(142..=1166).contains(&bytes.len())
+            || !(bytes.len() - 142).is_multiple_of(32)
             || &bytes[..4] != PROFILE
             || bytes[4..36] != scope
             || bytes[36..68] != view
@@ -302,10 +307,15 @@ impl SummaryFrame {
             return None;
         }
         let count = usize::try_from(u64::from_le_bytes(bytes[102..110].try_into().ok()?)).ok()?;
-        Some(Self {
+        let frame = Self {
             scope,
             view,
             prefix,
+            leaves: if bytes.len() > 174 {
+                bytes[142..].as_chunks::<32>().0.to_vec()
+            } else {
+                Vec::new()
+            },
             singleton: if bytes.len() == 174 {
                 Some(bytes[142..174].try_into().ok()?)
             } else {
@@ -315,7 +325,31 @@ impl SummaryFrame {
                 count,
                 digest: bytes[110..142].try_into().ok()?,
             },
-        })
+        };
+        frame.valid_leaves().then_some(frame)
+    }
+    pub fn valid_leaves(&self) -> bool {
+        if self.leaves.is_empty() {
+            return self
+                .singleton
+                .is_none_or(|id| singleton_summary(self.prefix, id) == Some(self.summary));
+        }
+        if self.singleton.is_some()
+            || !(2..=32).contains(&self.leaves.len())
+            || self.summary.count != self.leaves.len()
+            || self.leaves.windows(2).any(|w| w[0] >= w[1])
+            || self
+                .leaves
+                .iter()
+                .any(|id| Prefix::new(self.prefix.bits, *id) != Some(self.prefix))
+        {
+            return false;
+        }
+        let mut index = RangeIndex::default();
+        for id in &self.leaves {
+            index.insert(*id);
+        }
+        index.summary(self.prefix) == self.summary
     }
 }
 
@@ -400,11 +434,24 @@ impl Checkpoint {
             {
                 return Err(RemoteError::InvalidFrame);
             }
+            if !frame.valid_leaves() {
+                return Err(RemoteError::InvalidFrame);
+            }
             self.pending.pop();
             examined += 1;
             let a = local.summary(prefix);
             let b = frame.summary;
             if a == b || b.count == 0 {
+                continue;
+            }
+            if !frame.leaves.is_empty() {
+                missing.extend(
+                    frame
+                        .leaves
+                        .iter()
+                        .filter(|id| !local.ids.contains(*id))
+                        .copied(),
+                );
                 continue;
             }
             if let Some(id) = frame.singleton {
@@ -501,6 +548,15 @@ impl RangeIndex {
             prefix,
             summary,
             singleton,
+            leaves: if (2..=32).contains(&summary.count) {
+                self.ids
+                    .range(prefix.key..)
+                    .take(summary.count)
+                    .copied()
+                    .collect()
+            } else {
+                Vec::new()
+            },
         }
     }
 }

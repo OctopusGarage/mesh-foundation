@@ -6,7 +6,7 @@ Development candidate: 0.1.0-alpha.2. Not published; alpha.1 and its tag are unc
 
 Verified locally with Rust 1.99.0:
 
-- Workspace all-feature suite: 241 passing tests including doctests.
+- Workspace all-feature suite: 243 passing tests including doctests.
 - Replication with default features disabled: 39 passing tests including doctests.
 - Final targeted driver suite: six tests pass after progress-reporting refinement.
 - All-target/all-feature Clippy with warnings denied; rustdoc warnings denied.
@@ -32,6 +32,9 @@ driver to avoid full remote inventory exchange. Range discovery is inbound
 coverage, not bidirectional equality. The index is in-memory; hosts own durable
 index maintenance, bounded rebuilds and resource accounting. Local summary counts
 are not a measurement of a remote SQL backend's rows or disk I/O.
+
+Additional leaf-batch tests verify that one RPC discovers 32 missing IDs and
+rejects forged digests, duplicate/out-of-prefix IDs and oversized frames.
 
 No p95/p99 latency or throughput claim is made. Tests verify deterministic budget
 and cache/index invariants, not production performance under every workload.

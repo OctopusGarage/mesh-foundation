@@ -50,7 +50,7 @@ async fn driver_only_reports_complete_after_discovered_records_commit() {
 #[tokio::test]
 async fn driver_resumes_default_budget_and_invalidates_external_index_changes() {
     let mut remote = RangeIndex::default();
-    for n in 0u8..20 {
+    for n in 0u8..201 {
         remote.insert([n; 32]);
     }
     let mut local = RangeIndex::default();

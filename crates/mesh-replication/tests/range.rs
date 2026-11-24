@@ -40,6 +40,7 @@ fn profile_rejects_wrong_scope_noncanonical_and_oversized_frames() {
         view: [2; 32],
         prefix: Prefix::root(),
         singleton: None,
+        leaves: Vec::new(),
         summary: Summary {
             count: 0,
             digest: [0; 32],
@@ -80,6 +81,7 @@ async fn remote_queries_are_bounded_and_checkpoint_binds_snapshot() {
                         prefix,
                         summary: b.summary(prefix),
                         singleton: None,
+                        leaves: Vec::new(),
                     })
                 },
             )
@@ -203,7 +205,9 @@ async fn cancelled_discovery_does_not_consume_prior_prefixes() {
                 if calls == 3 {
                     std::future::pending::<()>().await;
                 }
-                Ok::<_, ()>(b.frame([1; 32], [3; 32], p))
+                let mut frame = b.frame([1; 32], [3; 32], p);
+                frame.leaves.clear(); // Exercise multi-query cancellation, not the leaf shortcut.
+                Ok::<_, ()>(frame)
             },
         );
         let mut pending = pin!(pending);
@@ -332,4 +336,44 @@ fn replacing_an_index_with_same_revision_invalidates_cached_comparisons() {
         c.advance([1; 32], [2; 32], &local, &rebuilt, 1).progress,
         Progress::Invalidated
     );
+}
+
+#[tokio::test]
+async fn leaf_batch_discovers_32_ids_in_one_rpc_and_rejects_forged_contents() {
+    use mesh_replication::range::SummaryFrame;
+    let mut remote = RangeIndex::default();
+    for n in 0..32u8 {
+        remote.insert([n; 32]);
+    }
+    let local = RangeIndex::default();
+    let frame = remote.frame([1; 32], [2; 32], Prefix::root());
+    assert_eq!(frame.leaves.len(), 32);
+    assert_eq!(frame.encode().len(), 1166);
+    assert!(SummaryFrame::decode(&frame.encode(), [1; 32], [2; 32]).is_some());
+    let mut cp = Checkpoint::for_remote([1; 32], [3; 32], &local, remote.revision());
+    let d = cp
+        .advance_remote(
+            &local,
+            [2; 32],
+            [3; 32],
+            remote.revision(),
+            1,
+            || true,
+            async |_| Ok::<_, ()>(frame.clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(d.missing.len(), 32);
+    assert_eq!(d.examined, 1);
+    assert_eq!(d.progress, Progress::Complete);
+    for kind in 0..4 {
+        let mut bad = frame.clone();
+        match kind {
+            0 => bad.leaves[1] = bad.leaves[0],
+            1 => bad.summary.digest[0] ^= 1,
+            2 => bad.prefix = Prefix::new(1, [128; 32]).unwrap(),
+            _ => bad.leaves.push([99; 32]),
+        }
+        assert!(SummaryFrame::decode(&bad.encode(), [1; 32], [2; 32]).is_none());
+    }
 }
