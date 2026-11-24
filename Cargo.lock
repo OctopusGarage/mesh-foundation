@@ -189,6 +189,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
+name = "const-oid"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be95d4a884358a21a199689323c29e9256b4a1b315e22f183d155422041d3a9a"
+
+[[package]]
 name = "cpubits"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,6 +327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.1",
+ "const-oid",
  "crypto-common 0.2.2",
 ]
 
@@ -556,7 +563,7 @@ dependencies = [
  "mesh-foundation-connect",
  "mesh-foundation-identity",
  "rand_core 0.6.4",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "zeroize",
@@ -590,7 +597,7 @@ dependencies = [
  "hkdf",
  "rand_core 0.6.4",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "x25519-dalek",
  "zeroize",
 ]
@@ -604,7 +611,7 @@ dependencies = [
  "hex",
  "rand_core 0.6.4",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "x25519-dalek",
  "zeroize",
 ]
@@ -622,7 +629,7 @@ dependencies = [
  "mesh-foundation-storage",
  "rand_core 0.6.4",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "x25519-dalek",
@@ -639,7 +646,7 @@ dependencies = [
  "mesh-foundation-connect",
  "mesh-foundation-identity",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tokio",
  "x25519-dalek",
 ]
@@ -655,7 +662,7 @@ dependencies = [
  "rand_core 0.6.4",
  "ring",
  "serde",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tempfile",
  "zeroize",
 ]

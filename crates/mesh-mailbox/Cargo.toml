@@ -17,7 +17,7 @@ hkdf = "0.12"
 mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.2", path = "../mesh-identity" }
 mesh-replication = { package = "mesh-foundation-replication", version = "=0.1.0-alpha.2", path = "../mesh-replication", default-features = false, features = ["legacy-wire"] }
 serde = { version = "1", features = ["derive"] }
-sha2 = "0.10"
+sha2 = "0.11"
 x25519-dalek = { version = "3", features = ["static_secrets", "getrandom"] }
 zeroize = "1"
 mesh-storage = { package = "mesh-foundation-storage", version = "=0.1.0-alpha.2", path = "../mesh-storage" }
