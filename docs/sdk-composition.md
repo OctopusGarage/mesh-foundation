@@ -127,3 +127,12 @@ model and operation can be used independently. Keeping a historical checkpoint
 magic value preserves encrypted local data compatibility; it does not import the
 application's event model. Changing those bytes merely to rename a prefix would
 create a migration without improving the module boundary.
+
+
+Architecture guards parse actual Cargo dependency package names, including aliases
+and target-specific tables. Source checks also catch compact application names.
+Only the three exact historical KDF byte literals are exempted at their reviewed
+source location; new references on that line still fail. These checks catch known
+regressions, not arbitrary application semantics. Semantic review and independent
+consumer tests remain necessary. See the E2EE crate README for the retained
+cryptographic compatibility profile.

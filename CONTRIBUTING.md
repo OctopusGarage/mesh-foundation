@@ -6,13 +6,14 @@ For security issues, follow [SECURITY.md](SECURITY.md) rather than opening a pub
 
 ## Development
 
-Install Rust with rustup and Python 3. The repository selects Rust 1.99.0 with
+Install Rust with rustup and Python 3.11 or newer. The repository selects Rust 1.99.0 with
 rustfmt and Clippy. This is the tested toolchain, not a minimum supported Rust
 version promise. If Cargo comes from another installation, check `rustc --version`.
 
 Run from the repository root:
 
 ```sh
+python3 -m unittest discover -s scripts -p "test_*.py"
 python3 scripts/sdk.py check
 cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings

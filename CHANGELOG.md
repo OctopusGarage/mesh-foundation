@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Clarify host-owned storage/discovery responsibilities and historical crypto
+  profile compatibility; pin HKDF outputs and receiver checkpoint bytes.
+- Strengthen architecture guards for compact application references and aliased
+  or target-specific Cargo dependencies. Repository checks require Python 3.11+.
+
 - **Breaking:** remove account lifecycle timestamps and implicit sender-chain
   refresh policy; expose explicit generation-checked receiver rebase candidates.
 - **Breaking:** split typed mailbox model/store/transport/client from optional

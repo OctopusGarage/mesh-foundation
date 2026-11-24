@@ -40,7 +40,7 @@ mesh-replication = { package = "mesh-foundation-replication", version = "=0.1.0-
 Rust imports remain `mesh_identity` and `mesh_replication`. Registry installation
 does not require GitHub repository access. For development in this checkout:
 
-Install Rust through rustup and Python 3, then run from this checkout:
+Install Rust through rustup and Python 3.11 or newer, then run from this checkout:
 
 ```sh
 cargo run --locked -p mesh-foundation-identity --example device_identity

@@ -3,25 +3,54 @@ import os
 from pathlib import Path
 import re
 import unittest
+import tomllib
 
 ROOT = Path(os.environ.get('MESH_BOUNDARY_ROOT', Path(__file__).resolve().parents[1]))
 
 
+# These exact historical byte literals are compatibility contracts, not imports.
+# Keep exceptions local: another application reference on the same line still fails.
+HISTORICAL_LITERALS = {
+    'mesh-e2ee/src/ratchet/kdf.rs': (
+        'b"MeshTalk-Ratchet-RK"', 'b"MeshTalk-Ratchet-CK"', 'b"MeshTalk-Ratchet-MSG"',
+    ),
+}
+
+
+def application_protocol_hits(path, source):
+    for literal in HISTORICAL_LITERALS.get(path, ()):
+        source = source.replace(literal, '')
+    return re.findall(r'mesh[-_ ]?talk|\bEventKind\b|\bMembershipChange\b|\bChannelMetadata\b|\blegacy_(?:event|wire|round)\b|\bpost_office\b', source, re.IGNORECASE)
+
+
+def application_dependencies(manifest):
+    """Check actual package names, including aliases and target-specific tables."""
+    found = []
+    for key, value in manifest.items():
+        if key in {'dependencies', 'dev-dependencies', 'build-dependencies'}:
+            for alias, spec in value.items():
+                package = spec.get('package', alias) if isinstance(spec, dict) else alias
+                normalized = package.lower().replace('_', '-')
+                if normalized in {'mesh-talk', 'tauri'} or normalized.startswith(('mesh-talk-', 'tauri-')):
+                    found.append(package)
+        elif isinstance(value, dict):
+            found.extend(application_dependencies(value))
+    return found
+
+
 class ArchitectureTests(unittest.TestCase):
     def test_no_application_protocol_in_production_sources(self):
-        forbidden = re.compile(r'mesh-talk|mesh_talk|Mesh Talk|\bEventKind\b|\bMembershipChange\b|\bChannelMetadata\b|\blegacy_(?:event|wire|round)\b|\bpost_office\b')
         offenders = []
         for path in (ROOT / 'crates').glob('*/src/**/*.rs'):
-            if forbidden.search(path.read_text()):
+            if application_protocol_hits(path.relative_to(ROOT / 'crates').as_posix(), path.read_text()):
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [], 'application protocols belong to consumer repositories')
 
     def test_no_application_dependencies_or_legacy_feature(self):
-        for path in (ROOT / 'crates').glob('*/Cargo.toml'):
+        for path in [ROOT / 'Cargo.toml', *(ROOT / 'crates').glob('*/Cargo.toml')]:
             source = path.read_text()
-            self.assertNotIn('mesh-talk', source, path)
+            self.assertEqual(application_dependencies(tomllib.loads(source)), [], path)
             self.assertNotIn('legacy-wire', source, path)
-            self.assertNotIn('tauri', source, path)
         replication = (ROOT / 'crates/mesh-replication/Cargo.toml').read_text()
         self.assertIn('default = []', replication)
 

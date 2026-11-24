@@ -91,3 +91,27 @@ The final Mesh Talk session suite passes 111 tests, with its existing scale
 rehearsal ignored. This covers bounded range/history turns, committed progress,
 wrong-scope and duplicate responses, unavailable records, compatibility fallbacks,
 TCP reconnect and attachment framing. No ignored scale or UI E2E result is claimed.
+
+## Boundary audit follow-up: documentation and compatibility guards
+
+The audit follow-up changes documentation and regression checks, not production
+interfaces, KDF labels, key derivation, wire formats or checkpoint encoding.
+Outdated DM phase, application file, desktop-only and keystore-owner descriptions
+were replaced with host-owned integration contracts.
+
+- Python suite: 14 tests passed, including rule fixtures for compact application
+  names, exact/location-bound historical literals, aliased dependencies and
+  target-specific build dependencies. The new fixtures first exposed the old
+  rules' missing checks before implementation.
+- E2EE suite: 41 tests passed. Independent hmac/hashlib HKDF known answers pin root,
+  chain and message derivation. An independently built MTRX version-one fixture
+  pins receiver checkpoint bytes in both encoding and decoding directions.
+- A temporary mutation of the root HKDF label made the known-answer test fail;
+  restoring the original bytes returned the complete E2EE suite to green.
+- Strict workspace all-target/all-feature Clippy, warning-denying workspace
+  rustdoc, format and release-policy checks passed.
+
+No new crypto profile, generic policy framework, application migration or registry
+publication was introduced. The full workspace/consumer suites from the previous
+implementation remain historical evidence; this follow-up reran the affected
+E2EE tests and repository checks rather than claiming another full consumer run.
