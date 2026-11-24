@@ -2,6 +2,9 @@
 
 Rust libraries for peer connectivity and decentralized replication.
 
+See [SDK development and delivery](docs/sdk-delivery.md) for dependency pins,
+local overrides, CI verification and release steps.
+
 Use `mesh-connect` for pinned-key Noise XX sessions over a reliable, ordered
 byte stream. Pass a connected TCP stream or an equivalent transport. Provide
 a trusted public key to dial and an admission policy to accept. Discard a
