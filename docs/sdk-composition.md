@@ -106,3 +106,24 @@ Sender-key recovery uses explicit `prepare_rebase` and generation-checked
 `install`; hosts authenticate the distribution and decide when rebasing is
 allowed. Persist the candidate checkpoint atomically with the host state. No
 implicit gap threshold inside the SDK decides application recovery policy.
+
+## Boundary review criteria
+
+Keep mechanisms when their contract is useful without knowing application record
+kinds: signing/certificates, pairwise or multi-recipient cryptography, encrypted
+logs, scoped hashes, finite snapshots, bounded retrieval and verified blob bytes.
+A sender key is a cryptographic primitive; it does not imply a chat group model.
+An account certificate is a key binding; it does not imply registration, profile,
+creation date, membership or recovery policy.
+
+Move application schemas and decisions to the consumer: post/message types,
+announcements, membership/roles, profile metadata, recipient addressing, consent,
+compatibility domains, scheduling and authorization. Configurable limits are
+resource controls, not application schemas. Defaults remain documented and
+replaceable; the SDK does not infer a seven-day business history rule.
+
+Versioned wire and disk profiles may remain supplied SDK adapters, provided the
+model and operation can be used independently. Keeping a historical checkpoint
+magic value preserves encrypted local data compatibility; it does not import the
+application's event model. Changing those bytes merely to rename a prefix would
+create a migration without improving the module boundary.

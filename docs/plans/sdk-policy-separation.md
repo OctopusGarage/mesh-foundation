@@ -31,3 +31,17 @@ Tasks:
    on authorized main; commit own Mesh Talk changes locally on requirements-work.
 
 No UI redesign, implicit workers, application event schema or new publication.
+
+
+Implementation outcomes:
+- Steps 1–5 implemented and verified; typed core and each optional adapter compile
+  independently. SDK all-feature/default/minimal suites pass 216/211/196 tests.
+- Code committed/pushed on SDK main at `072735a`; published alpha.1 tag unchanged.
+- Forum's 26 tests pass against both local paths and that public Git revision.
+- Mesh Talk source migration committed locally on requirements-work at `72aacc87`;
+  managed SDK source is byte-identical to the reviewed code revision. Its 140
+  channel tests, 88 protocol tests, late key-repair regression, strict Clippy,
+  desktop compilation, structural standards and hygiene checks pass.
+- Step 6 completed: session suite 111 passed/one existing scale case ignored;
+  final evidence recorded in business-neutral-verification.md. No application
+  release, new registry publication, UI changes or unrelated consumer commit.

@@ -75,6 +75,19 @@ Account compile-fail tests enforce the removed lifecycle API. Crypto tests cover
 explicit rebase, stale installation and preserved consumed/skipped-key semantics.
 CI now checks each mailbox feature independently and runs both composition examples.
 
-Mesh Forum's 26 tests pass with local overrides of this source, including private
-relay retrieval after authenticated TCP reconnect. Consumer Git-pin verification
-and Mesh Talk checks are recorded below after integration finishes.
+Mesh Forum's 26 tests pass both with local overrides and without overrides against
+public Git commit `072735a62766bf5d88134c638ef12f357f6f1cfc`, including private
+relay retrieval after authenticated TCP reconnect. All seven manifest/lockfile
+entries pin that reviewed revision. Mesh Talk's 140 channel-related core tests
+pass against an identical managed SDK copy; its desktop library check also passes
+with Rust 1.99.0. Strict core/protocol all-target Clippy passes. The separate
+late-initial-key history repair regression passes. Structural standards and
+repository hygiene checks pass. Mesh Talk adaptation is committed locally on
+`requirements-work` as `72aacc87`; unrelated search/documentation work is excluded.
+Its complete protocol suite passes 88 tests, including independent historical
+identity/certificate/event/discovery byte fixtures and lost-reply TCP resumption.
+
+The final Mesh Talk session suite passes 111 tests, with its existing scale
+rehearsal ignored. This covers bounded range/history turns, committed progress,
+wrong-scope and duplicate responses, unavailable records, compatibility fallbacks,
+TCP reconnect and attachment framing. No ignored scale or UI E2E result is claimed.
