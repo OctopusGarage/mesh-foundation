@@ -1,5 +1,7 @@
 //! Transport-independent authenticated frame and inventory transfer contracts.
 
+use crate::{CompleteInventory, EventId, InventoryError};
+
 /// The transport owns peer authentication, ordered delivery and the frame
 /// length bound. Discard a session after an interrupted inventory exchange.
 pub trait ReconciliationSession {
@@ -54,6 +56,26 @@ pub enum HaveError<E> {
     CountMismatch,
 }
 
+impl<E: std::fmt::Display> std::fmt::Display for HaveError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exchange(error) => write!(f, "inventory exchange failed: {error}"),
+            Self::Limit => f.write_str("inventory transfer exceeds its limits"),
+            Self::Allocation => f.write_str("unable to allocate bounded inventory"),
+            Self::CountMismatch => f.write_str("inventory count differs from the captured view"),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for HaveError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Exchange(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// Receive a bounded inventory from framed I/O. The codec checks the protocol
 /// variant, conversation and frame contents before returning IDs. This function
 /// preserves raw order and duplicates for the caller's admission logic.
@@ -93,6 +115,46 @@ where
         }
     }
     Err(HaveError::Limit)
+}
+
+/// Failure while reading or canonicalizing an inventory stream.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReceiveInventoryError<E> {
+    Transfer(HaveError<E>),
+    Inventory(InventoryError),
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for ReceiveInventoryError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Transfer(error) => error.fmt(f),
+            Self::Inventory(error) => error.fmt(f),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ReceiveInventoryError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Transfer(error) => Some(error),
+            Self::Inventory(error) => Some(error),
+        }
+    }
+}
+
+/// Receive a bounded authorized inventory and canonicalize it in place.
+///
+/// The decoder must validate the stream's role and scope. Only a terminal
+/// page completes the inventory. Duplicate IDs fail even across page boundaries.
+pub async fn receive_inventory<S: ReconciliationSession>(
+    session: &mut S,
+    limits: HaveLimits,
+    decode: impl FnMut(&[u8]) -> Result<HaveFrame<EventId>, S::Error>,
+) -> Result<CompleteInventory, ReceiveInventoryError<S::Error>> {
+    let ids = receive_have(session, limits, decode)
+        .await
+        .map_err(ReceiveInventoryError::Transfer)?;
+    CompleteInventory::from_owned(ids).map_err(ReceiveInventoryError::Inventory)
 }
 
 /// A finite, already authorized inventory. A page may contain zero IDs and

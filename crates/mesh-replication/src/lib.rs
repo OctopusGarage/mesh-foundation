@@ -69,19 +69,8 @@ impl Inventory {
         Ok(())
     }
 
-    pub fn finish(mut self) -> Result<CompleteInventory, InventoryError> {
-        self.ids.sort_unstable();
-        if self.ids.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(InventoryError::Duplicate);
-        }
-        let mut digest = InventoryDigest::new(self.ids.len() as u64);
-        for id in &self.ids {
-            digest.update(id);
-        }
-        Ok(CompleteInventory {
-            ids: self.ids,
-            fingerprint: digest.finish(),
-        })
+    pub fn finish(self) -> Result<CompleteInventory, InventoryError> {
+        CompleteInventory::from_owned(self.ids)
     }
 }
 
@@ -113,6 +102,31 @@ pub struct CompleteInventory {
 }
 
 impl CompleteInventory {
+    /// Canonicalize a finite, authorized collection for comparison.
+    pub fn from_ids(ids: &[EventId], max_ids: usize) -> Result<Self, InventoryError> {
+        if ids.len() > max_ids {
+            return Err(InventoryError::TotalLimit);
+        }
+        let mut inventory = Inventory::new(max_ids, max_ids);
+        inventory.add_page(ids)?;
+        inventory.finish()
+    }
+
+    fn from_owned(mut ids: Vec<EventId>) -> Result<Self, InventoryError> {
+        ids.sort_unstable();
+        if ids.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(InventoryError::Duplicate);
+        }
+        let mut digest = InventoryDigest::new(ids.len() as u64);
+        for id in &ids {
+            digest.update(id);
+        }
+        Ok(Self {
+            ids,
+            fingerprint: digest.finish(),
+        })
+    }
+
     pub fn len(&self) -> usize {
         self.ids.len()
     }

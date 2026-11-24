@@ -66,8 +66,11 @@ committing permanent changes.
    Capture a finite view. Use `HaveSource::validate` to recheck authority
    before each outgoing page.
 3. Bound the receive by frames, IDs per frame and total IDs. The Have stream
-   preserves raw IDs, including duplicates. Construct `Inventory` for a
-   canonical digest and exact set difference once all pages are present.
+   preserves raw IDs, including duplicates. Use
+   `receive_inventory` when the caller needs the final canonical set. It
+   collects and sorts in place, rejecting duplicates across page boundaries.
+   Use `CompleteInventory::from_ids` for the local authorized set and
+   `remote.missing_from(&local)` for IDs absent locally.
 4. Fetch missing records through the application's protocol. Authenticate each
    record and commit accepted records before reporting progress.
 
@@ -121,10 +124,9 @@ existing session interface. Keep the mailbox's concrete envelope for the
 existing wire format until another application needs a different signed record
 schema behind the same retention lifecycle.
 
-The next public naming improvement is an inventory-oriented entry point for new
-consumers. The low-level Have functions expose framing decisions intentionally
-because a custom protocol needs a codec. A convenience layer should remove
-actual call-order duplication across two consumers before it adds vocabulary.
+New consumers can start at the inventory-oriented receive entry point. The
+low-level Have functions let a custom protocol retain its codec and admit raw
+IDs before canonicalizing them.
 Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
 explicit conversion when crossing profiles. A future typed common ID requires
 a migration plan for constructor names and existing callers.
