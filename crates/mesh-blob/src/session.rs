@@ -144,32 +144,49 @@ pub async fn serve_request<S: AsyncRead + AsyncWrite + Unpin>(
     availability: impl FnOnce(&[u8; 32], [u8; 32], u32, u32) -> Option<Vec<bool>>,
 ) -> Result<(), TransportError> {
     let bytes = session.recv().await?;
+    let reply = respond_to_request(&bytes, session.peer_key(), load, availability)?;
+    session.send(&reply).await
+}
+
+/// Identify a blob frame at the existing host's authenticated dispatch boundary.
+pub fn is_blob_request(bytes: &[u8]) -> bool {
+    bytes.starts_with(REQUEST) || bytes.starts_with(AVAILABILITY)
+}
+
+/// Build a reply for an already authenticated connection. Hosts can keep their
+/// existing session type and pass its verified peer identity to both loaders.
+pub fn respond_to_request<P>(
+    bytes: &[u8],
+    peer: &P,
+    load: impl FnOnce(&P, [u8; 32], u32, u32) -> Option<Vec<u8>>,
+    availability: impl FnOnce(&P, [u8; 32], u32, u32) -> Option<Vec<bool>>,
+) -> io::Result<Vec<u8>> {
     let request: [u8; 44] = bytes.try_into().map_err(|_| invalid())?;
     let object = request[4..36].try_into().unwrap();
     let index = u32::from_be_bytes(request[36..40].try_into().unwrap());
     let length = u32::from_be_bytes(request[40..].try_into().unwrap());
     let body = match &request[..4] {
         tag if tag == REQUEST && length as usize <= MAX_CHUNK_BODY => {
-            load(session.peer_key(), object, index, length)
+            load(peer, object, index, length)
         }
         tag if tag == AVAILABILITY
             && (1..=MAX_AVAILABILITY_PAGE).contains(&length)
             && index.checked_add(length).is_some() =>
         {
-            availability(session.peer_key(), object, index, length)
+            availability(peer, object, index, length)
                 .map(|page| page.into_iter().map(u8::from).collect())
         }
-        _ => return Err(invalid().into()),
+        _ => return Err(invalid()),
     };
     if let Some(body) = body {
         if body.len() != length as usize {
-            return Err(invalid().into());
+            return Err(invalid());
         }
         let mut reply = Vec::with_capacity(body.len() + 1);
         reply.push(DATA);
         reply.extend_from_slice(&body);
-        session.send(&reply).await
+        Ok(reply)
     } else {
-        session.send(&[MISSING]).await
+        Ok(vec![MISSING])
     }
 }
