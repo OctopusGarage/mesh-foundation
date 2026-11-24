@@ -7,10 +7,12 @@ Development candidate: 0.1.0-alpha.2. Not published; alpha.1 and its tag are unc
 Verified locally with Rust 1.99.0:
 
 - Workspace all-feature suite: 243 passing tests including doctests.
-- Replication with default features disabled: 39 passing tests including doctests.
+- Replication with default features disabled: 40 passing tests including doctests.
 - Final targeted driver suite: six tests pass after progress-reporting refinement.
 - All-target/all-feature Clippy with warnings denied; rustdoc warnings denied.
 - Release policy tests, alpha.2 tag check, actionlint and whitespace checks.
+- GitHub SDK CI passed on Linux, macOS and Windows for commit `4bf8f92`
+  ([run](https://github.com/OctopusGarage/mesh-foundation/actions/runs/45368238771)).
 - Runnable bounded_sync example commits one record using two bounded requests.
 - An additional real TCP regression passes: two budgeted turns reuse the same
   authenticated session and resume from committed inventory without omissions.
