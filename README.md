@@ -1,15 +1,17 @@
 # Mesh Foundation
 
 [![SDK](https://github.com/OctopusGarage/mesh-foundation/actions/workflows/sdk.yml/badge.svg?branch=main)](https://github.com/OctopusGarage/mesh-foundation/actions/workflows/sdk.yml)
+[![crates.io](https://img.shields.io/crates/v/mesh-foundation-identity.svg)](https://crates.io/crates/mesh-foundation-identity)
+[![docs.rs](https://img.shields.io/docsrs/mesh-foundation-identity/0.1.0-alpha.1)](https://docs.rs/mesh-foundation-identity/0.1.0-alpha.1/mesh_identity/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Rust building blocks for authenticated peer connectivity, bounded replication,
 identity, encrypted content, durable storage, offline mailboxes and blob transfer.
 Compose the crates you need; your application controls trust, authorization and lifecycle.
 
-**Status:** evolving 0.x SDK, currently delivered through pinned Git revisions.
-The first registry candidate is `0.1.0-alpha.1`; see the delivery guide for actual
-publication status and installation. APIs may change; there is no independent
+**Status:** development alpha. All seven packages are published on crates.io at
+`0.1.0-alpha.1`. See the [alpha release](https://github.com/OctopusGarage/mesh-foundation/releases/tag/v0.1.0-alpha.1)
+and [delivery guide](docs/sdk-delivery.md) for installation and local development. APIs may change; there is no independent
 security-audit claim. Linux, macOS and Windows are covered by the SDK CI matrix.
 The tested toolchain is Rust 1.99.0; an MSRV has not been established.
 
@@ -18,6 +20,17 @@ The tested toolchain is Rust 1.99.0; an MSRV has not been established.
 [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 ## Quick start
+
+Install published packages using explicit aliases and exact alpha pins:
+
+```toml
+[dependencies]
+mesh-identity = { package = "mesh-foundation-identity", version = "=0.1.0-alpha.1" }
+mesh-replication = { package = "mesh-foundation-replication", version = "=0.1.0-alpha.1", default-features = false }
+```
+
+Rust imports remain `mesh_identity` and `mesh_replication`. Registry installation
+does not require GitHub repository access. For development in this checkout:
 
 Install Rust through rustup and Python 3, then run from this checkout:
 
@@ -55,6 +68,18 @@ using the command above; registry package names use the `mesh-foundation-*` pref
 `test-observability`, where available, is intended for compatibility tests.
 Cargo unifies features across a dependency graph; check the resolved graph when
 combining adapters.
+
+Published packages and API documentation:
+
+| Package | API docs |
+| --- | --- |
+| [mesh-foundation-identity](https://crates.io/crates/mesh-foundation-identity) | [mesh_identity](https://docs.rs/mesh-foundation-identity/0.1.0-alpha.1/mesh_identity/) |
+| [mesh-foundation-storage](https://crates.io/crates/mesh-foundation-storage) | [mesh_storage](https://docs.rs/mesh-foundation-storage/0.1.0-alpha.1/mesh_storage/) |
+| [mesh-foundation-e2ee](https://crates.io/crates/mesh-foundation-e2ee) | [mesh_e2ee](https://docs.rs/mesh-foundation-e2ee/0.1.0-alpha.1/mesh_e2ee/) |
+| [mesh-foundation-connect](https://crates.io/crates/mesh-foundation-connect) | [mesh_connect](https://docs.rs/mesh-foundation-connect/0.1.0-alpha.1/mesh_connect/) |
+| [mesh-foundation-replication](https://crates.io/crates/mesh-foundation-replication) | [mesh_replication](https://docs.rs/mesh-foundation-replication/0.1.0-alpha.1/mesh_replication/) |
+| [mesh-foundation-blob](https://crates.io/crates/mesh-foundation-blob) | [mesh_blob](https://docs.rs/mesh-foundation-blob/0.1.0-alpha.1/mesh_blob/) |
+| [mesh-foundation-mailbox](https://crates.io/crates/mesh-foundation-mailbox) | [mesh_mailbox](https://docs.rs/mesh-foundation-mailbox/0.1.0-alpha.1/mesh_mailbox/) |
 
 ## Integration overview
 

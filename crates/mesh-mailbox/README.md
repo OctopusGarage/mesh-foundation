@@ -14,8 +14,9 @@ cargo doc --locked -p mesh-foundation-mailbox --all-features --no-deps --open
 ```
 
 This crate is part of [Mesh Foundation](https://github.com/OctopusGarage/mesh-foundation).
-All seven crates share a version and Git revision. The initial registry candidate is `0.1.0-alpha.1`. Use exact alpha pins after
-publication, or a reviewed full Git SHA during development. See the delivery
+All seven crates share a version and Git revision. Published on [crates.io](https://crates.io/crates/mesh-foundation-mailbox) at `0.1.0-alpha.1`.
+[API documentation](https://docs.rs/mesh-foundation-mailbox/0.1.0-alpha.1/mesh_mailbox/).
+Use exact alpha pins, or a reviewed full Git SHA during development. See the delivery
 guide for registry aliases and local overrides.
 
 See the repository [README](https://github.com/OctopusGarage/mesh-foundation#readme),

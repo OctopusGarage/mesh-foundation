@@ -3,9 +3,9 @@
 ## Release channels
 
 Mesh Foundation uses coordinated versions across seven `mesh-foundation-*`
-packages. The first candidate is `0.1.0-alpha.1`; this document describes the
-release contract, not a claim that upload has completed. Verify availability on
-crates.io before using a candidate. Public registry uploads expose package source
+packages. All seven packages are published at `0.1.0-alpha.1`; see the
+[release verification](alpha-release-verification.md) and
+[GitHub prerelease](https://github.com/OctopusGarage/mesh-foundation/releases/tag/v0.1.0-alpha.1). Public registry uploads expose package source
 regardless of the GitHub repository's visibility.
 
 - **crates.io** distributes immutable source packages. docs.rs builds API docs.

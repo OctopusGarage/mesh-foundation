@@ -1,7 +1,7 @@
 # Alpha release verification
 
 Candidate: seven mesh-foundation-* packages at 0.1.0-alpha.1.
-Date: 2026-11-24. Status: five packages published; replication and mailbox await registry rate-limit retry.
+Date: 2026-11-24. Status: all seven packages published and verified on crates.io.
 
 ## Completed local checks
 
@@ -51,15 +51,21 @@ All five downloaded registry packages match release SHA 2812256, their docs.rs p
 respond successfully, and a registry-only external consumer (including the blob
 mesh-connect adapter) runs successfully.
 
-The sixth new crate hit HTTP 429: the account can create one new crate every ten
-minutes after its initial five-crate burst. Replication is queued for 08:12:55 UTC
-on 2026-11-24, with mailbox following at the next server-authorized time if needed.
-The existing resume process handles only these two missing packages and does not
-re-upload published versions. Final seven-crate verification and publication of
-the prepared GitHub draft prerelease remain pending.
-Credentials were not committed to source or stored in Cargo configuration.
-After upload, verify registry-only consumption and docs.rs. Do not present local
-patch success as evidence that registry installation already works.
+The sixth new crate hit HTTP 429 after the initial five-crate burst. The resume
+process honored server retry timestamps, publishing replication and then mailbox
+without re-uploading existing versions. All seven downloaded registry packages
+have clean source identity matching the immutable release commit above.
+
+A clean external consumer with exact registry dependencies on all seven packages,
+including replication/blob mesh-connect adapters, compiled and ran identity
+signature and inventory checks. No Git/path patches were used. All seven docs.rs
+API pages returned HTTP 200, preserving their original mesh_* library names.
+The supplied local credential file was deleted after successful uploads; no token
+was committed or stored in Cargo configuration.
+
+The [GitHub alpha prerelease](https://github.com/OctopusGarage/mesh-foundation/releases/tag/v0.1.0-alpha.1)
+contains the source archive, COMMIT and SHA256SUMS. Documentation follow-up commits
+do not move or replace the release tag.
 
 The OIDC publication workflow is prepared but not exercised remotely. Each crate
 must first exist and its trusted publisher must match this repository,
