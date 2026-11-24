@@ -34,7 +34,9 @@ MTOM1. The core session suite passes 111 tests with the existing scale rehearsal
 ignored. Application validation tooling tests pass 66 cases and registers the new
 protocol crate in the actual source/contract inventory.
 
-Mesh Forum passes 26 headless tests against local SDK overrides. Its local record
+Mesh Forum passes 26 headless tests against local SDK overrides. A second run
+using the reviewed full Git revision also passes all 26 tests without local
+overrides; its manifest and lockfile now pin that revision. Its local record
 schema contains only Post/Revision/Withdrawal and preserves existing record bytes.
 Its private-content composition test encrypts the complete signed host payload
 before opaque mailbox deposition, rejects tampering, reopens durable storage,
