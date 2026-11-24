@@ -139,13 +139,16 @@ impl CompleteInventory {
 }
 
 /// Mesh Talk signed event compatibility codec.
+#[cfg(feature = "legacy-wire")]
 pub mod legacy_event;
 
 /// Transport-independent framed reconciliation.
 pub mod session;
 
 /// Mesh Talk-compatible synchronization frame codec.
+#[cfg(feature = "legacy-wire")]
 pub mod legacy_wire;
 
 /// Requester engine for Mesh Talk-compatible sync rounds.
+#[cfg(feature = "legacy-wire")]
 pub mod legacy_round;

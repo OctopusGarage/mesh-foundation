@@ -8,13 +8,15 @@ repository.workspace = true
 description = "Authenticated, encrypted peer sessions for mesh applications"
 
 [features]
+default = ["signed-discovery"]
+signed-discovery = ["dep:bincode", "dep:mesh-identity", "dep:serde"]
 test-observability = []
 
 [dependencies]
-bincode = "1.3"
+bincode = { version = "1.3", optional = true }
 futures-util = "0.3"
-mesh-identity = { path = "../mesh-identity" }
-serde = { version = "1", features = ["derive"] }
+mesh-identity = { path = "../mesh-identity", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 if-addrs = "0.15"
 log = "0.4"
 socket2 = { version = "0.6", features = ["all"] }

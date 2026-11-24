@@ -11,6 +11,30 @@ pub trait ReconciliationSession {
     fn recv(&mut self) -> impl Future<Output = Result<Vec<u8>, Self::Error>> + Send;
 }
 
+/// Enables direct use of Mesh Connect's pinned-key session with the replication
+/// interface. Applications using IP, another carrier, or a custom handshake
+/// can instead implement `ReconciliationSession` on their own session type.
+#[cfg(feature = "mesh-connect")]
+impl<S> ReconciliationSession for mesh_connect::PeerSession<S>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
+{
+    type Peer = [u8; 32];
+    type Error = mesh_connect::TransportError;
+
+    fn peer_identity(&self) -> &Self::Peer {
+        self.peer_key()
+    }
+
+    async fn send(&mut self, frame: &[u8]) -> Result<(), Self::Error> {
+        self.send(frame).await
+    }
+
+    async fn recv(&mut self) -> Result<Vec<u8>, Self::Error> {
+        self.recv().await
+    }
+}
+
 pub struct HaveLimits {
     pub ids_per_frame: usize,
     pub frames: usize,

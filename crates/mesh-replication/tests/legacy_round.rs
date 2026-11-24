@@ -1,3 +1,5 @@
+#![cfg(feature = "legacy-wire")]
+
 use mesh_identity::device::DeviceIdentity;
 use mesh_replication::legacy_round::{ResponderBackend, serve};
 use mesh_replication::{
