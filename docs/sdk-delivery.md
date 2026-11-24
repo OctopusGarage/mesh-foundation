@@ -127,6 +127,13 @@ it is not a snapshot selection mechanism. Published versions cannot be replaced.
    tag with `create_draft_release=true`. Configure required reviewers on the
    `release` environment; a YAML environment name alone does not enforce approval.
 
+First publication of a seven-crate workspace can take more than twenty minutes:
+crates.io allows five new crates in a burst, then one additional new crate every
+ten minutes. New versions of existing crates use a different limit (a burst of
+30, then one per minute). Follow the exact retry timestamp returned by HTTP 429;
+do not repeatedly restart the whole workspace upload. See the official
+[publishing rate limits](https://crates.io/docs/rate-limits).
+
 There is no atomic multi-crate registry transaction. On partial failure, inspect
 published versions and provenance before resuming only missing packages. Never
 skip an existing version based only on its name. If provenance is uncertain,

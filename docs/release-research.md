@@ -106,3 +106,13 @@ publish=false guard blocks a real attempted dry-run before upload.
 
 A concrete proposal, package naming migration and consumer examples are in the
 [registry release design](plans/registry-release-design.md). No upload has occurred.
+
+## First-publication rate limits confirmed during bootstrap
+
+The first real upload succeeded for five new packages, then crates.io returned
+HTTP 429 before replication. The official rate-limit documentation specifies a
+burst of five new crates per account, followed by one new crate every ten minutes.
+Existing-crate version uploads have a burst of thirty, followed by one per minute.
+Plan bootstrap separately from routine version releases and honor server retry
+timestamps. Sources: [rate limits](https://crates.io/docs/rate-limits) and the
+[official page source](https://github.com/rust-lang/crates.io/blob/main/svelte/src/routes/docs/rate-limits/+page.svelte).

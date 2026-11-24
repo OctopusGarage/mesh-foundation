@@ -1,8 +1,7 @@
 # Alpha release verification
 
 Candidate: seven mesh-foundation-* packages at 0.1.0-alpha.1.
-Date: 2026-11-24. Status: registry upload attempted and blocked by unverified crates.io account email.
-No package has been published.
+Date: 2026-11-24. Status: five packages published; replication and mailbox await registry rate-limit retry.
 
 ## Completed local checks
 
@@ -46,8 +45,18 @@ unpacked packages contain the matching clean release SHA, README and LICENSE.
 The user approved the public registry and new package names. A crates.io bootstrap
 credential was supplied through the secure secret UI. The real workspace publish
 completed package compilation, then crates.io rejected the first upload with
-HTTP 400: a verified email address is required. No uploads succeeded. The account
-owner must verify their email at https://crates.io/settings/profile before retry.
+HTTP 400 because the account email was unverified. The user subsequently verified
+the email, and the resumed upload published identity, storage, E2EE, connect and blob.
+All five downloaded registry packages match release SHA 2812256, their docs.rs pages
+respond successfully, and a registry-only external consumer (including the blob
+mesh-connect adapter) runs successfully.
+
+The sixth new crate hit HTTP 429: the account can create one new crate every ten
+minutes after its initial five-crate burst. Replication is queued for 08:12:55 UTC
+on 2026-11-24, with mailbox following at the next server-authorized time if needed.
+The existing resume process handles only these two missing packages and does not
+re-upload published versions. Final seven-crate verification and publication of
+the prepared GitHub draft prerelease remain pending.
 Credentials were not committed to source or stored in Cargo configuration.
 After upload, verify registry-only consumption and docs.rs. Do not present local
 patch success as evidence that registry installation already works.
