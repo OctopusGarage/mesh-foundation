@@ -14,7 +14,7 @@ description = "At-rest record encryption compatible with Mesh Talk"
 test-observability = []
 
 [dependencies]
-bincode = "1.3"
+bincode = "3.0"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 aes-gcm = "0.11"
