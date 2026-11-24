@@ -1,5 +1,5 @@
 use crate::{ChunkStore, SparseBlobReceiver, SparseReceiveError};
-use futures_util::{StreamExt, stream};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{future::Future, num::NonZeroUsize};
 
 /// An authorized source for the exact object version. Sources must bound
@@ -31,46 +31,53 @@ impl SparseBlobReceiver<'_> {
     ) -> Result<(), DownloadError<S::Error>> {
         let layout = self.layout;
         let hashes = self.hashes;
-        // Own just the current window of indices so commits can update progress
-        // while requests borrow the source list.
-        let mut next = 0;
-        while next < layout.chunk_count() {
-            let batch: Vec<_> = self.missing_from(next).take(concurrency.get()).collect();
-            let Some(&last) = batch.last() else { break };
-            next = last + 1;
-            let mut requests = stream::iter(batch)
-                .map(|index| async move {
-                    let length = layout
-                        .chunk_len(index)
-                        .expect("index from validated layout");
-                    let start = (index as usize).checked_rem(sources.len()).unwrap_or(0);
-                    for source in sources[start..].iter().chain(&sources[..start]) {
-                        if source.has_chunk(index)
-                            && let Ok(bytes) = source.fetch(index, length).await
-                            && bytes.len() == length as usize
-                            && crate::chunk_hash(&bytes) == hashes[index as usize]
-                        {
-                            return Ok((index, bytes));
-                        }
-                    }
-                    Err(DownloadError::Unavailable(index))
-                })
-                .buffer_unordered(concurrency.get());
-            let mut unavailable = None;
-            while let Some(reply) = requests.next().await {
-                match reply {
-                    Ok((index, bytes)) => {
-                        self.accept(store, index, &bytes)
-                            .map_err(DownloadError::Receive)?;
-                    }
-                    Err(error) => {
-                        unavailable.get_or_insert(error);
-                    }
+        let fetch = |index| async move {
+            let length = layout
+                .chunk_len(index)
+                .expect("index from validated layout");
+            let start = (index as usize).checked_rem(sources.len()).unwrap_or(0);
+            for source in sources[start..].iter().chain(&sources[..start]) {
+                if source.has_chunk(index)
+                    && let Ok(bytes) = source.fetch(index, length).await
+                    && bytes.len() == length as usize
+                    && crate::chunk_hash(&bytes) == hashes[index as usize]
+                {
+                    return Ok((index, bytes));
                 }
             }
-            if let Some(error) = unavailable {
-                return Err(error);
+            Err(DownloadError::Unavailable(index))
+        };
+
+        let mut next = 0;
+        let mut unavailable = None;
+        let mut requests = FuturesUnordered::new();
+        loop {
+            while unavailable.is_none()
+                && requests.len() < concurrency.get()
+                && next < layout.chunk_count()
+            {
+                let Some(index) = self.missing_from(next).next() else {
+                    next = layout.chunk_count();
+                    break;
+                };
+                requests.push(fetch(index));
+                next = index + 1;
             }
+            // Keep healthy sources moving as slots free up. After a terminal
+            // miss, drain only work already started so it can survive a retry.
+            match requests.next().await {
+                Some(Ok((index, bytes))) => {
+                    self.accept(store, index, &bytes)
+                        .map_err(DownloadError::Receive)?;
+                }
+                Some(Err(error)) => {
+                    unavailable.get_or_insert(error);
+                }
+                None => break,
+            }
+        }
+        if let Some(error) = unavailable {
+            return Err(error);
         }
         self.verify(store).map_err(DownloadError::Receive)
     }

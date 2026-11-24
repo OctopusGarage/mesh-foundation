@@ -132,3 +132,51 @@ async fn complementary_sources_retry_and_resume_from_disk() {
     receiver.download(&mut store, &[peer], limit).await.unwrap();
     assert_eq!(*requests.borrow(), [1]);
 }
+
+#[tokio::test]
+async fn a_slow_source_does_not_block_refilling_free_request_slots() {
+    use mesh_blob::ChunkSource;
+    use std::{num::NonZeroUsize, time::Duration};
+    use tokio::sync::Notify;
+
+    struct Source<'a> {
+        slow: bool,
+        fast_started_next: &'a Notify,
+    }
+
+    impl ChunkSource for Source<'_> {
+        type Error = ();
+
+        fn has_chunk(&self, index: u32) -> bool {
+            self.slow == (index == 0)
+        }
+
+        async fn fetch(&self, index: u32, _: u32) -> Result<Vec<u8>, ()> {
+            match index {
+                0 => self.fast_started_next.notified().await,
+                2 => self.fast_started_next.notify_one(),
+                _ => {}
+            }
+            Ok(vec![index as u8])
+        }
+    }
+
+    let fast_started_next = Notify::new();
+    let sources = [true, false].map(|slow| Source {
+        slow,
+        fast_started_next: &fast_started_next,
+    });
+    let bytes = [0, 1, 2];
+    let layout = BlobLayout::new(3, 1, 3).unwrap();
+    let hashes = bytes.map(|byte| chunk_hash(&[byte]));
+    let mut receiver = SparseBlobReceiver::new(layout, file_checksum(&bytes), &hashes, 3).unwrap();
+    let mut store = Store::default();
+
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        receiver.download(&mut store, &sources, NonZeroUsize::new(2).unwrap()),
+    )
+    .await
+    .expect("the free slot must start chunk 2 while chunk 0 is still pending")
+    .unwrap();
+}

@@ -194,7 +194,10 @@ the transfer protocol, request concurrency, and final publication.
 Use `DirectoryChunkStore` for private file-per-chunk staging, with one writer
 per object version. `SparseBlobReceiver::download` rotates across the supplied
 sources, bounds concurrent requests, and retries other sources for an
-unavailable or invalid chunk. Hosts supply authorized availability snapshots.
+unavailable or invalid chunk. A completed request frees its slot immediately,
+so a slow source does not hold up unrelated requests. If every source fails
+for one chunk, in-flight requests can still commit before the error returns.
+Hosts supply authorized availability snapshots.
 Reopen the staging directory and call `restore` before resuming.
 
 With the `mesh-connect` feature, a host uses `SessionChunkSource` on a
