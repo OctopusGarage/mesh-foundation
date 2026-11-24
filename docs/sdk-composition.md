@@ -63,8 +63,12 @@ committing permanent changes.
    byte streams can use the same session. A differently framed carrier
    implements `ReconciliationSession` and supplies its own verified peer.
 2. Choose the scope and authorize the local inventory before exporting it.
-   Capture a finite view. Use `HaveSource::validate` to recheck authority
-   before each outgoing page.
+   Capture a finite view. The default `inventory_session::send_inventory`
+   sends a canonical set with an explicit sender and a scope, and calls
+   the authorization callback before each page. The matching
+   `inventory_session::receive_inventory` verifies these fields. For
+   streaming store views and other codecs, use `HaveSource::validate`
+   to recheck authority before each outgoing page.
 3. Bound the receive by frames, IDs per frame and total IDs. The Have stream
    preserves raw IDs, including duplicates. Use
    `receive_inventory` when the caller needs the final canonical set. It
@@ -150,3 +154,24 @@ The generic pull accepts either the SDK record exchange adapter or the
 application's own fetch callback, together with a commit callback. A new record schema defines its authorization, ID verification and
 transaction rules there. The SDK supplies selection, batching, response
 validation and durable-progress accounting.
+
+## Safe defaults and application parameters
+
+- `DiscoveryConfig` binds a caller-selected IPv4 multicast group and UDP
+  port. The bound socket reports the matching target and can refresh
+  group membership after an interface change. The host schedules discovery.
+- `DeviceCertificate::verified_issuer_for_device` returns issuer material
+  only after verifying the expected device binding. Trust remains with
+  the application.
+- `RatchetState::ratchet_decrypt` changes live receive state only after
+  authentication. Persisting a successful state alongside application
+  records still requires the host's transaction.
+- `BlobLayout` validates the total size, chunk size and index range.
+  `BlobVerifier::for_layout` checks exact per-chunk lengths. Hosts
+  select the maximum size and stage bytes until final verification.
+- `EncryptedRecordLog::open_with_key_and_frame_limit` takes a key
+  resolver and bounds each frame during reads and writes. A lower limit
+  can reject an existing log and does not rewrite its stored records.
+- `Spool::open_with_key_provider` uses the caller's key resolver and the
+  spool's internal frame ceiling. The spool still owns its file
+  backend, lease and cursor. `MailboxStore` remains the read adapter.

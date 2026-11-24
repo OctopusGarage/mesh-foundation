@@ -135,3 +135,16 @@ async fn cancelling_partial_receive_closes_the_stream() {
     ));
     assert!(matches!(send.await, Err(TransportError::Io(_))));
 }
+
+#[tokio::test]
+async fn discovery_config_rejects_unicast_and_retains_the_assigned_port() {
+    use mesh_connect::net::DiscoveryConfig;
+    use std::net::Ipv4Addr;
+
+    assert!(DiscoveryConfig::new(47474, Ipv4Addr::LOCALHOST).is_err());
+    let group = Ipv4Addr::new(239, 42, 1, 2);
+    let discovery = DiscoveryConfig::new(0, group).unwrap().bind().unwrap();
+    let local = discovery.socket().local_addr().unwrap();
+    assert_ne!(local.port(), 0);
+    assert_eq!(discovery.multicast_target(), (group, local.port()).into());
+}

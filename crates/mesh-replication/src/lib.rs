@@ -169,3 +169,6 @@ pub mod legacy_round;
 
 /// Transport-independent record retrieval and commit orchestration.
 pub mod pull;
+
+/// Default scoped inventory exchange for new applications.
+pub mod inventory_session;

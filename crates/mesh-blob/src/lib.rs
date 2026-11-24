@@ -30,7 +30,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 mod receive;
-pub use receive::BlobVerifier;
+pub use receive::{BlobLayout, BlobVerifier};
 
 const KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 12;
@@ -141,12 +141,13 @@ pub fn split_chunks(data: &[u8]) -> Vec<&[u8]> {
     data.chunks(CHUNK_SIZE).collect()
 }
 
-/// Number of `CHUNK_SIZE` chunks for a file of `size` bytes (>= 1; empty == 1).
+/// Legacy chunk count, saturating outside the supported index range.
+/// Use [BlobLayout::new] to validate untrusted sizes.
 pub fn chunk_count_for(size: u64) -> u32 {
     if size == 0 {
         return 1;
     }
-    size.div_ceil(CHUNK_SIZE as u64) as u32
+    u32::try_from(size.div_ceil(CHUNK_SIZE as u64)).unwrap_or(u32::MAX)
 }
 
 // ---- v2: deterministic-nonce, indexed chunk crypto (the large-file path) ----

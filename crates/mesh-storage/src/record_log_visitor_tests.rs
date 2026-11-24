@@ -392,3 +392,24 @@ fn sibling_logs_can_replace_independently_with_different_extensions() {
     let (_, records) = EncryptedRecordLog::<u64>::open(&second, "test password", MAGIC).unwrap();
     assert_eq!(records, [7]);
 }
+
+#[test]
+fn configured_record_limit_preserves_existing_file_on_replay_failure() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("limited");
+    let open = |max_frame_bytes| {
+        EncryptedRecordLog::<Vec<u8>>::open_with_key_and_frame_limit(
+            &path, b"MTTEST", |_| Ok(EncryptionKey::from_derived_key([7; 32])),
+            max_frame_bytes, |_| Ok(()),
+        )
+    };
+    let mut writer = open(1024).unwrap();
+    writer.append_durable(&vec![3; 64]).unwrap();
+    drop(writer);
+    let before = std::fs::read(&path).unwrap();
+    assert!(open(64).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let mut writer = open(1024).unwrap();
+    assert!(writer.append_durable(&vec![3; 1024]).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+}

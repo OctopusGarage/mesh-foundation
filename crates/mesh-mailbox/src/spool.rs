@@ -10,7 +10,10 @@ use crate::{
     service::MailboxStore,
 };
 use mesh_replication::legacy_event::{ConversationId, Event, EventId};
-use mesh_storage::record_log::{EncryptedRecordLog, RecordLogError};
+use mesh_storage::{
+    EncryptionKey, SALT_SIZE, StorageError,
+    record_log::{EncryptedRecordLog, RecordLogError},
+};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -102,6 +105,20 @@ impl Spool {
         limits: CapacityLimits,
         max_age_secs: NonZeroU64,
     ) -> Result<Self, SpoolError> {
+        Self::open_with_key_provider(path, scope, limits, max_age_secs, |salt| {
+            EncryptionKey::from_password(password, salt)
+        })
+    }
+
+    /// Open with a caller-supplied key resolver. The spool still owns its
+    /// exclusive writer lease, record-size ceiling, and durable cursor.
+    pub fn open_with_key_provider(
+        path: &Path,
+        scope: ConversationId,
+        limits: CapacityLimits,
+        max_age_secs: NonZeroU64,
+        derive: impl FnOnce(&[u8; SALT_SIZE]) -> Result<EncryptionKey, StorageError>,
+    ) -> Result<Self, SpoolError> {
         let mut sidecar = path.as_os_str().to_owned();
         sidecar.push(".mesh-spool-lock");
         let lock_path = PathBuf::from(sidecar);
@@ -128,52 +145,58 @@ impl Spool {
         let mut bytes = 0u64;
         let mut first_seen = None;
         let mut rejected = None;
-        let log = EncryptedRecordLog::open_with_visitor(path, password, MAGIC, |record| {
-            let error = match record {
-                Record::Header {
-                    scope: actual,
-                    store_uuid,
-                    epoch,
-                } if loaded.is_none() && actual == scope && epoch >= 0 => {
-                    loaded = Some((store_uuid, epoch));
-                    return Ok(());
-                }
-                Record::Envelope {
-                    first_seen: time,
-                    event,
-                } if loaded.is_some()
-                    && first_seen.is_none_or(|old| old == time)
-                    && !positions.contains_key(&event.id)
-                    && valid_envelope(scope, &event) =>
-                {
-                    match encoded_size(&event).and_then(|size| {
-                        let admission = limits
-                            .admit(entries.len() as u64, bytes, size)
-                            .map_err(|_| SpoolError::CounterExhausted)?;
-                        if admission != Admission::Accept {
-                            return Err(SpoolError::Limit);
-                        }
-                        bytes = bytes
-                            .checked_add(size)
-                            .ok_or(SpoolError::CounterExhausted)?;
-                        Ok(())
-                    }) {
-                        Ok(()) => {
-                            first_seen = Some(time);
-                            positions.insert(event.id, entries.len());
-                            entries.push(event);
-                            return Ok(());
-                        }
-                        Err(error) => error,
+        let log = EncryptedRecordLog::open_with_key_and_frame_limit(
+            path,
+            MAGIC,
+            derive,
+            128 * 1024,
+            |record| {
+                let error = match record {
+                    Record::Header {
+                        scope: actual,
+                        store_uuid,
+                        epoch,
+                    } if loaded.is_none() && actual == scope && epoch >= 0 => {
+                        loaded = Some((store_uuid, epoch));
+                        return Ok(());
                     }
-                }
-                _ => SpoolError::InvalidRecord,
-            };
-            rejected = Some(error);
-            Err(RecordLogError::Io(std::io::Error::other(
-                "spool replay rejected",
-            )))
-        });
+                    Record::Envelope {
+                        first_seen: time,
+                        event,
+                    } if loaded.is_some()
+                        && first_seen.is_none_or(|old| old == time)
+                        && !positions.contains_key(&event.id)
+                        && valid_envelope(scope, &event) =>
+                    {
+                        match encoded_size(&event).and_then(|size| {
+                            let admission = limits
+                                .admit(entries.len() as u64, bytes, size)
+                                .map_err(|_| SpoolError::CounterExhausted)?;
+                            if admission != Admission::Accept {
+                                return Err(SpoolError::Limit);
+                            }
+                            bytes = bytes
+                                .checked_add(size)
+                                .ok_or(SpoolError::CounterExhausted)?;
+                            Ok(())
+                        }) {
+                            Ok(()) => {
+                                first_seen = Some(time);
+                                positions.insert(event.id, entries.len());
+                                entries.push(event);
+                                return Ok(());
+                            }
+                            Err(error) => error,
+                        }
+                    }
+                    _ => SpoolError::InvalidRecord,
+                };
+                rejected = Some(error);
+                Err(RecordLogError::Io(std::io::Error::other(
+                    "spool replay rejected",
+                )))
+            },
+        );
         if let Some(error) = rejected {
             return Err(error);
         }
