@@ -175,3 +175,8 @@ validation and durable-progress accounting.
 - `Spool::open_with_key_provider` uses the caller's key resolver and the
   spool's internal frame ceiling. The spool still owns its file
   backend, lease and cursor. `MailboxStore` remains the read adapter.
+- The mailbox host owns connection admission, deadlines and idle retirement.
+  Reuse one authenticated stream for sequential delta and body requests under
+  the same negotiated scope. Recheck authorization for each request. After
+  interrupted I/O, reopen the stream and resume from the last cursor whose
+  selected bodies the consumer committed.
