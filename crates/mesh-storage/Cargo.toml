@@ -25,7 +25,7 @@ zeroize = "1"
 tempfile = "3"
 
 [dev-dependencies]
-pbkdf2 = "0.12"
+pbkdf2 = "0.13"
 sha2 = "0.10"
 
 [lib]
