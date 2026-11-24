@@ -123,6 +123,7 @@ impl RoundBackend<RoundFault> for Replica {
         Ok(())
     }
     type HaveReservation = Rc<()>;
+    type HaveCursor = usize;
 
     fn have_limits(&self) -> HaveLimits {
         HaveLimits {
@@ -135,7 +136,7 @@ impl RoundBackend<RoundFault> for Replica {
     fn have_source<'a>(
         &'a self,
         _: &'a (),
-    ) -> impl HaveSource<Id = EventId, Error = RoundFault> + 'a {
+    ) -> impl HaveSource<Id = EventId, Cursor = Self::HaveCursor, Error = RoundFault> + 'a {
         FixtureHave(self.accepted.borrow().iter().copied().collect())
     }
 

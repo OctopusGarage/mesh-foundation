@@ -143,12 +143,13 @@ pub trait RoundBackend<E> {
     fn quiet_comparison_token(&self, view: &Self::View) -> Result<Option<[u8; 32]>, E>;
     fn retain_quiet_comparison(&self, view: &Self::View, hint: QuietComparison) -> Result<(), E>;
     type HaveReservation;
+    type HaveCursor;
 
     fn have_limits(&self) -> HaveLimits;
     fn have_source<'a>(
         &'a self,
         view: &'a Self::View,
-    ) -> impl HaveSource<Id = EventId, Error = E> + 'a;
+    ) -> impl HaveSource<Id = EventId, Cursor = Self::HaveCursor, Error = E> + 'a;
     fn reserve_remote_have(&self) -> Result<Self::HaveReservation, E>;
     fn collect_remote_have(
         &self,
