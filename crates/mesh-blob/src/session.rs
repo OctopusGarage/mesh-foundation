@@ -11,6 +11,7 @@ use tokio::{
 const AVAILABILITY: &[u8; 4] = b"MBA1";
 pub const MAX_AVAILABILITY_PAGE: u32 = 4096;
 const REQUEST: &[u8; 4] = b"MBC1";
+const BOUNDED_REQUEST: &[u8; 4] = b"MBR1";
 const DATA: u8 = 1;
 const MISSING: u8 = 0;
 pub const MAX_CHUNK_BODY: usize = MAX_PLAINTEXT - 1;
@@ -116,6 +117,23 @@ impl<S: BlobSession> ChunkSource for AuthenticatedChunkSource<S> {
     }
 
     async fn fetch(&self, index: u32, length: u32) -> Result<Vec<u8>, TransportError> {
+        self.request(REQUEST, index, length).await
+    }
+}
+
+impl<S: BlobSession> AuthenticatedChunkSource<S> {
+    /// Fetch a variable-length wrapped block, such as a signed event. The host
+    /// validates the envelope and applies it through its normal storage path.
+    pub async fn fetch_bounded(&self, index: u32, limit: u32) -> Result<Vec<u8>, TransportError> {
+        self.request(BOUNDED_REQUEST, index, limit).await
+    }
+
+    async fn request(
+        &self,
+        tag: &[u8; 4],
+        index: u32,
+        length: u32,
+    ) -> Result<Vec<u8>, TransportError> {
         if length as usize > MAX_CHUNK_BODY {
             return Err(invalid().into());
         }
@@ -124,11 +142,13 @@ impl<S: BlobSession> ChunkSource for AuthenticatedChunkSource<S> {
             let mut session = slot
                 .take()
                 .ok_or(io::Error::from(io::ErrorKind::NotConnected))?;
-            let request = encode_request(REQUEST, self.object, index, length);
+            let request = encode_request(tag, self.object, index, length);
             session.send(&request).await?;
             let reply = session.recv().await?;
             let result = match reply.split_first() {
-                Some((&DATA, body)) if body.len() == length as usize => Ok(body.to_vec()),
+                Some((&DATA, body)) if response_length_matches(tag, body.len(), length) => {
+                    Ok(body.to_vec())
+                }
                 Some((&MISSING, [])) => Err(io::Error::from(io::ErrorKind::NotFound).into()),
                 _ => return Err(invalid().into()),
             };
@@ -163,7 +183,9 @@ pub async fn serve_request<S: AsyncRead + AsyncWrite + Unpin>(
 
 /// Identify a blob frame at the existing host's authenticated dispatch boundary.
 pub fn is_blob_request(bytes: &[u8]) -> bool {
-    bytes.starts_with(REQUEST) || bytes.starts_with(AVAILABILITY)
+    bytes.starts_with(REQUEST)
+        || bytes.starts_with(AVAILABILITY)
+        || bytes.starts_with(BOUNDED_REQUEST)
 }
 
 /// Build a reply for an already authenticated connection. Hosts can keep their
@@ -179,7 +201,7 @@ pub fn respond_to_request<P>(
     let index = u32::from_be_bytes(request[36..40].try_into().unwrap());
     let length = u32::from_be_bytes(request[40..].try_into().unwrap());
     let body = match &request[..4] {
-        tag if tag == REQUEST && length as usize <= MAX_CHUNK_BODY => {
+        tag if (tag == REQUEST || tag == BOUNDED_REQUEST) && length as usize <= MAX_CHUNK_BODY => {
             load(peer, object, index, length)
         }
         tag if tag == AVAILABILITY
@@ -192,7 +214,7 @@ pub fn respond_to_request<P>(
         _ => return Err(invalid()),
     };
     if let Some(body) = body {
-        if body.len() != length as usize {
+        if !response_length_matches(&request[..4], body.len(), length) {
             return Err(invalid());
         }
         let mut reply = Vec::with_capacity(body.len() + 1);
@@ -201,5 +223,41 @@ pub fn respond_to_request<P>(
         Ok(reply)
     } else {
         Ok(vec![MISSING])
+    }
+}
+
+fn response_length_matches(tag: &[u8], actual: usize, length: u32) -> bool {
+    if tag == BOUNDED_REQUEST {
+        actual <= length as usize
+    } else {
+        actual == length as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signed_envelope_response_obeys_the_requested_byte_limit() {
+        let object = [7; 32];
+        let request = encode_request(BOUNDED_REQUEST, object, 1, 4);
+        let load = |peer: &u8, id, index, length| {
+            assert_eq!((*peer, id, index, length), (9, object, 1, 4));
+            Some(vec![2, 3, 4])
+        };
+        let reply = respond_to_request(&request, &9, load, |_, _, _, _| None).unwrap();
+        assert_eq!(reply, [DATA, 2, 3, 4]);
+        assert!(
+            respond_to_request(
+                &request,
+                &9,
+                |_, _, _, _| Some(vec![0; 5]),
+                |_, _, _, _| None
+            )
+            .is_err()
+        );
+        let exact = encode_request(REQUEST, object, 1, 4);
+        assert!(respond_to_request(&exact, &9, load, |_, _, _, _| None).is_err());
     }
 }
