@@ -95,7 +95,7 @@ pub async fn pull_missing<Fetch, Commit>(
 
 /// Progress after one successful atomic commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PullProgress {
+pub struct PullCommitProgress {
     pub batch_records: usize,
     pub committed_records: usize,
 }
@@ -108,7 +108,7 @@ pub async fn pull_missing_observed<Fetch, Commit>(
     limits: PullLimits,
     mut fetch: impl AsyncFnMut(&[EventId], usize) -> Result<Vec<Record>, Fetch>,
     mut commit: impl FnMut(&[Record]) -> Result<(), Commit>,
-    mut observe: impl FnMut(PullProgress),
+    mut observe: impl FnMut(PullCommitProgress),
 ) -> Result<usize, PullError<Fetch, Commit>> {
     if limits.records_per_batch == 0 || limits.bytes_per_batch == 0 {
         return Err(PullError {
@@ -135,7 +135,7 @@ pub async fn pull_missing_observed<Fetch, Commit>(
         })?;
         commit(&records).map_err(|error| fail(PullErrorKind::Commit(error)))?;
         committed += records.len();
-        observe(PullProgress {
+        observe(PullCommitProgress {
             batch_records: records.len(),
             committed_records: committed,
         });

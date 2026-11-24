@@ -1,6 +1,8 @@
 use mesh_replication::{
     CompleteInventory,
-    pull::{PullErrorKind, PullLimits, PullProgress, Record, pull_missing, pull_missing_observed},
+    pull::{
+        PullCommitProgress, PullErrorKind, PullLimits, Record, pull_missing, pull_missing_observed,
+    },
 };
 
 fn inventory(ids: &[u8]) -> CompleteInventory {
@@ -44,7 +46,7 @@ async fn reports_committed_prefix_when_the_next_batch_is_invalid() {
     assert_eq!(error.committed, 1);
     assert_eq!(
         progress,
-        [PullProgress {
+        [PullCommitProgress {
             batch_records: 1,
             committed_records: 1
         }]

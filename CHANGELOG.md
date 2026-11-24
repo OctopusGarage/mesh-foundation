@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add typed SDK diagnostics, committed progress callbacks, and durability reports.
 - Add total-turn pull budgets and an indexed range synchronization driver.
 - Add cancellation-safe range checkpoints, compressed summaries and dedicated frames.
 - Add bounded mailbox retrieval with atomic body/cursor acknowledgement and explicit reset.
