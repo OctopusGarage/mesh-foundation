@@ -71,19 +71,23 @@ committing permanent changes.
    collects and sorts in place, rejecting duplicates across page boundaries.
    Use `CompleteInventory::from_ids` for the local authorized set and
    `remote.missing_from(&local)` for IDs absent locally.
-4. Call `pull_missing` with the remote and local inventories. Give the fetch
-   callback the request IDs and byte budget. Bound the response before
-   decoding and use the application protocol to request those IDs. The
-   commit callback verifies content IDs, signatures and current authorization,
-   then commits the whole batch atomically. The SDK rejects duplicate, missing
-   or unexpected IDs and oversized bodies before calling commit.
-5. If a later batch fails, `PullError::committed` reports the earlier confirmed
-   count. Resume after reconnect by building the local inventory from the
-   committed store. An empty difference performs no fetch.
+4. Choose the record exchange. With the default profile, the reader calls
+   `pull_over_session`. The sender handles each request with
+   `serve_record_request` and supplies a loader that checks the authenticated
+   peer's current scope access. The SDK binds both frames to the scope and caps
+   header, record and body sizes before copying response bodies. Applications
+   with a different wire format can use `pull_missing` with their own fetch
+   callback.
+5. In either profile, the commit callback verifies content IDs, signatures and
+   current authorization, then commits the whole batch atomically. A later
+   failure leaves earlier commits intact and reports them in
+   `PullError::committed`. Resume after reconnect with a fresh local
+   inventory. An empty difference performs no fetch.
 
-Mesh Forum's board test uses an authenticated TCP session and the generic pull
-with a small fixture protocol. It validates the board and author, commits to an
-encrypted log, then reopens the log to verify persistence.
+Mesh Forum's board test runs canonical inventory comparison and the default
+record exchange on authenticated TCP. It verifies the board and author,
+commits to an encrypted log, then reopens the log to verify persistence.
+The host handles exchange dispatch and owns the connection lifetime.
 
 The generic inventory is ordering and set-comparison machinery. It has no
 record authorization, delivery receipt or application payload schema. The
@@ -142,7 +146,7 @@ Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
 explicit conversion when crossing profiles. A future typed common ID requires
 a migration plan for constructor names and existing callers.
 
-The generic pull deliberately accepts an application codec and a commit
-callback. A new record schema defines its authorization, ID verification and
+The generic pull accepts either the SDK record exchange adapter or the
+application's own fetch callback, together with a commit callback. A new record schema defines its authorization, ID verification and
 transaction rules there. The SDK supplies selection, batching, response
 validation and durable-progress accounting.

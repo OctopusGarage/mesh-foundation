@@ -3,6 +3,9 @@
 use crate::{CompleteInventory, EventId};
 use std::collections::HashSet;
 
+mod session;
+pub use session::{MAX_RECORD_FRAME, RecordExchangeError, pull_over_session, serve_record_request};
+
 #[derive(Clone, Copy, Debug)]
 pub struct PullLimits {
     pub records_per_batch: usize,
@@ -30,6 +33,39 @@ pub enum PullErrorKind<Fetch, Commit> {
     UnexpectedRecords,
     BodyLimit,
     Commit(Commit),
+}
+
+impl<Fetch: std::fmt::Display, Commit: std::fmt::Display> std::fmt::Display
+    for PullError<Fetch, Commit>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "record pull stopped after {} committed records: ",
+            self.committed
+        )?;
+        match &self.kind {
+            PullErrorKind::InvalidLimits => f.write_str("invalid batch limits"),
+            PullErrorKind::Fetch(error) => write!(f, "fetch failed: {error}"),
+            PullErrorKind::UnexpectedRecords => {
+                f.write_str("response does not match requested IDs")
+            }
+            PullErrorKind::BodyLimit => f.write_str("response exceeds the body byte budget"),
+            PullErrorKind::Commit(error) => write!(f, "commit failed: {error}"),
+        }
+    }
+}
+
+impl<Fetch: std::error::Error + 'static, Commit: std::error::Error + 'static> std::error::Error
+    for PullError<Fetch, Commit>
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            PullErrorKind::Fetch(error) => Some(error),
+            PullErrorKind::Commit(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 /// Pull IDs present remotely and absent locally, for one already authorized
@@ -65,20 +101,35 @@ pub async fn pull_missing<Fetch, Commit>(
         let records = fetch(&ids, limits.bytes_per_batch)
             .await
             .map_err(|error| fail(PullErrorKind::Fetch(error)))?;
-        if records.len() != ids.len() {
-            return Err(fail(PullErrorKind::UnexpectedRecords));
-        }
-        let mut expected: HashSet<_> = ids.iter().collect();
-        let mut remaining = limits.bytes_per_batch;
-        for record in &records {
-            if !expected.remove(&record.id) {
-                return Err(fail(PullErrorKind::UnexpectedRecords));
-            }
-            remaining = remaining
-                .checked_sub(record.body.len())
-                .ok_or_else(|| fail(PullErrorKind::BodyLimit))?;
-        }
+        validate_batch(&ids, &records, limits.bytes_per_batch).map_err(|error| {
+            fail(match error {
+                InvalidBatch::Records => PullErrorKind::UnexpectedRecords,
+                InvalidBatch::Bytes => PullErrorKind::BodyLimit,
+            })
+        })?;
         commit(&records).map_err(|error| fail(PullErrorKind::Commit(error)))?;
         committed += records.len();
     }
+}
+
+enum InvalidBatch {
+    Records,
+    Bytes,
+}
+
+fn validate_batch(ids: &[EventId], records: &[Record], bytes: usize) -> Result<(), InvalidBatch> {
+    if records.len() != ids.len() {
+        return Err(InvalidBatch::Records);
+    }
+    let mut expected: HashSet<_> = ids.iter().collect();
+    let mut remaining = bytes;
+    for record in records {
+        if !expected.remove(&record.id) {
+            return Err(InvalidBatch::Records);
+        }
+        remaining = remaining
+            .checked_sub(record.body.len())
+            .ok_or(InvalidBatch::Bytes)?;
+    }
+    Ok(())
 }
