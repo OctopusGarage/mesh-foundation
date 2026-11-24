@@ -3,7 +3,8 @@ use mesh_replication::legacy_round::{ResponderBackend, serve};
 use mesh_replication::{
     legacy_event::{ConversationId, Event, EventId, EventKind},
     legacy_round::{
-        ApplyReport, Probe, QuietComparison, RoundBackend, RoundFault, SyncMetadata, SyncProgress,
+        ApplyReport, HaveSender, Probe, QuietComparison, RoundBackend, RoundFault, SyncMetadata,
+        SyncProgress,
     },
     legacy_wire::{self, FpResponse, HaveChunk, SyncFollowup, SyncResponse, SyncWire},
     session::ReconciliationSession,
@@ -97,35 +98,39 @@ impl RoundBackend<RoundFault> for Replica {
         session: &mut impl ReconciliationSession<Peer = (), Error = RoundFault>,
         _: &(),
         scope: ConversationId,
-        wrap: fn(HaveChunk) -> SyncWire,
+        sender: HaveSender,
     ) -> Result<(), RoundFault> {
         let ids = self.accepted.borrow().iter().copied().collect();
-        let frame = legacy_wire::encode(&wrap(HaveChunk {
-            conversation: scope,
-            ids,
-            more: false,
-        }))
-        .map_err(RoundFault::Wire)?;
+        let frame = sender.encode(
+            scope,
+            mesh_replication::session::HaveFrame { ids, more: false },
+        )?;
         session.send(&frame).await
     }
     async fn receive_have(
         &self,
         session: &mut impl ReconciliationSession<Peer = (), Error = RoundFault>,
         scope: ConversationId,
-        requester: bool,
+        sender: HaveSender,
         _: bool,
     ) -> Result<Self::RemoteHave, RoundFault> {
-        let bytes = session.recv().await?;
-        match legacy_wire::decode(&bytes).map_err(RoundFault::Wire)? {
-            SyncWire::ReqHave(page) if requester && page.conversation == scope && !page.more => {
-                Ok(Box::new(page.ids.into_iter().collect()))
-            }
-            SyncWire::RespHave(page) if !requester && page.conversation == scope && !page.more => {
-                Ok(Box::new(page.ids.into_iter().collect()))
-            }
-            _ => Err(RoundFault::UnexpectedMessage),
-        }
+        let ids = mesh_replication::session::receive_have(
+            session,
+            mesh_replication::session::HaveLimits {
+                ids_per_frame: 32,
+                frames: 8,
+                total_ids: 256,
+            },
+            |bytes| sender.decode(scope, bytes),
+        )
+        .await
+        .map_err(|error| match error {
+            mesh_replication::session::HaveError::Exchange(error) => error,
+            _ => RoundFault::UnexpectedMessage,
+        })?;
+        Ok(Box::new(ids.into_iter().collect()))
     }
+
     async fn intersection_count(
         &self,
         _: &(),
@@ -335,4 +340,29 @@ async fn responder_exports_only_missing_ids_and_finishes_its_inventory() {
         have.ids.iter().copied().collect::<HashSet<_>>(),
         HashSet::from([first.id, missed.id])
     );
+}
+
+#[test]
+fn have_codec_checks_role_and_scope() {
+    let scope = ConversationId::new([1; 32]);
+    let foreign = ConversationId::new([2; 32]);
+    let sender = HaveSender::Responder;
+    let bytes = sender
+        .encode(
+            scope,
+            mesh_replication::session::HaveFrame {
+                ids: Vec::new(),
+                more: true,
+            },
+        )
+        .unwrap();
+    assert!(sender.decode(scope, &bytes).unwrap().more);
+    assert!(matches!(
+        sender.decode(foreign, &bytes),
+        Err(RoundFault::UnexpectedMessage)
+    ));
+    assert!(matches!(
+        HaveSender::Requester.decode(scope, &bytes),
+        Err(RoundFault::UnexpectedMessage)
+    ));
 }
