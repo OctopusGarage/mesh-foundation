@@ -6,7 +6,7 @@ use mesh_replication::{
         ApplyReport, HaveSender, Probe, QuietComparison, RoundBackend, RoundFault, SyncMetadata,
         SyncProgress,
     },
-    legacy_wire::{self, FpResponse, HaveChunk, SyncFollowup, SyncResponse, SyncWire},
+    legacy_wire::{self, FpResponse, HaveChunk, SyncResponse, SyncWire},
     session::{HaveError, HaveLimits, HavePage, HaveSource, ReconciliationSession},
 };
 use std::{
@@ -191,13 +191,13 @@ impl RoundBackend<RoundFault> for Replica {
     fn admission_denied(&self) -> bool {
         false
     }
-    async fn select_export_frames(
+    async fn select_export_batches(
         &self,
         _: &(),
-        scope: ConversationId,
         have: &Self::RemoteHave,
         _: usize,
-    ) -> Result<Vec<SyncFollowup>, RoundFault> {
+        _: usize,
+    ) -> Result<Vec<Vec<Event>>, RoundFault> {
         let events = self
             .exports
             .iter()
@@ -207,10 +207,7 @@ impl RoundBackend<RoundFault> for Replica {
         Ok(if events.is_empty() {
             vec![]
         } else {
-            vec![SyncFollowup {
-                conversation: scope,
-                events,
-            }]
+            vec![events]
         })
     }
 }
@@ -435,4 +432,42 @@ async fn responder_reserves_before_reading_and_releases_on_invalid_inventory() {
     assert!(channel.incoming.is_empty());
     assert!(channel.sent.is_empty());
     assert_eq!(Rc::strong_count(&replica.reservation), 1);
+}
+
+#[tokio::test]
+async fn responder_rejects_an_export_from_another_scope_before_sending() {
+    use mesh_replication::legacy_wire::SyncRequest;
+
+    let scope = ConversationId::new([7; 32]);
+    let foreign = ConversationId::new([8; 32]);
+    let author = DeviceIdentity::generate();
+    let event = Event::new(
+        &author,
+        foreign,
+        1,
+        vec![],
+        1,
+        0,
+        EventKind::Message,
+        vec![1],
+    );
+    let replica = Replica {
+        exports: vec![event],
+        ..Replica::default()
+    };
+    let mut channel = incoming([SyncWire::ReqHave(HaveChunk {
+        conversation: scope,
+        ids: vec![],
+        more: false,
+    })]);
+    let request = legacy_wire::encode(&SyncWire::Request(SyncRequest {
+        conversation: scope,
+        have: vec![],
+    }))
+    .unwrap();
+    assert_eq!(
+        serve(&mut channel, &replica, &request).await,
+        Err(RoundFault::UnexpectedMessage)
+    );
+    assert!(channel.sent.is_empty());
 }

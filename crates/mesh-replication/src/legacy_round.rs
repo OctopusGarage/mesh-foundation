@@ -24,7 +24,11 @@ pub enum RoundFault {
 }
 
 fn encode_frame(wire: &SyncWire) -> Result<Vec<u8>, RoundFault> {
-    legacy_wire::encode(wire).map_err(RoundFault::Wire)
+    let bytes = legacy_wire::encode(wire).map_err(RoundFault::Wire)?;
+    if bytes.len() > legacy_wire::MAX_PLAINTEXT {
+        return Err(RoundFault::Wire("oversized sync frame".into()));
+    }
+    Ok(bytes)
 }
 
 fn decode_frame(bytes: &[u8]) -> Result<SyncWire, RoundFault> {
@@ -162,13 +166,43 @@ pub trait RoundBackend<E> {
     fn comparison_fingerprint(&self, remote: &Self::RemoteHave) -> Option<[u8; 32]>;
     fn apply(&self, events: &[Event]) -> Result<ApplyReport, E>;
     fn admission_denied(&self) -> bool;
-    async fn select_export_frames(
+    /// Select bounded event batches from the currently authorized view.
+    async fn select_export_batches(
         &self,
         view: &Self::View,
-        scope: ConversationId,
         remote: &Self::RemoteHave,
         max_frames: usize,
-    ) -> Result<Vec<SyncFollowup>, E>;
+        encoded_per_frame: usize,
+    ) -> Result<Vec<Vec<Event>>, E>;
+}
+
+/// Maximum encoded event bytes common to a legacy Response and Followup.
+/// Compute the envelope overhead from the wire codec so storage adapters do
+/// not need to know the framing or reserve bytes for the wrong variant.
+pub fn event_frame_budget(scope: ConversationId) -> Result<usize, RoundFault> {
+    let overhead = encode_frame(&SyncWire::Response(SyncResponse {
+        conversation: scope,
+        events: vec![],
+        have: vec![],
+    }))?
+    .len();
+    Ok(legacy_wire::MAX_PLAINTEXT - overhead)
+}
+
+fn validate_export(
+    scope: ConversationId,
+    batches: &[Vec<Event>],
+    max_frames: usize,
+) -> Result<(), RoundFault> {
+    if batches.len() > max_frames
+        || batches
+            .iter()
+            .flatten()
+            .any(|event| event.conversation_id != scope)
+    {
+        return Err(RoundFault::UnexpectedMessage);
+    }
+    Ok(())
 }
 
 async fn send_have_pages<B, S, E>(
@@ -466,26 +500,32 @@ impl SyncProgress {
             backend.open_prepared_view(&conversation).await?
         };
         let mut followups = backend
-            .select_export_frames(&outgoing_view, conversation, &remote_have, max_followups)
+            .select_export_batches(
+                &outgoing_view,
+                &remote_have,
+                max_followups,
+                event_frame_budget(conversation)?,
+            )
             .await?;
+        validate_export(conversation, &followups, max_followups)?;
         let made_progress = report.applied > 0;
         // New controls may arrive after the fingerprint probe. Complete this
         // round empty and restart with the required capability before sending.
         let needs_v3 = followups
             .iter()
-            .flat_map(|frame| &frame.events)
+            .flatten()
             .any(|event| !supports_event_kind(event.kind, true, false, false, false));
         let needs_v4 = followups
             .iter()
-            .flat_map(|frame| &frame.events)
+            .flatten()
             .any(|event| !supports_event_kind(event.kind, true, true, false, false));
         let needs_v5 = followups
             .iter()
-            .flat_map(|frame| &frame.events)
+            .flatten()
             .any(|event| event.kind == EventKind::ChannelMetadata);
         let unsupported = followups
             .iter()
-            .flat_map(|frame| &frame.events)
+            .flatten()
             .any(|event| !supports_event_kind(event.kind, self.v2, self.v3, self.v4, self.v5));
         if unsupported {
             let empty = SyncFollowup {
@@ -529,21 +569,16 @@ impl SyncProgress {
             return Err(RoundFault::NoProgress.into());
         }
         let more_to_push = !followups.is_empty();
-        self.pushed_total += followups
-            .iter()
-            .map(|frame| frame.events.len())
-            .sum::<usize>();
-        self.previous_push = followups
-            .iter()
-            .flat_map(|frame| frame.events.iter().map(|event| event.id))
-            .collect();
+        self.pushed_total += followups.iter().map(Vec::len).sum::<usize>();
+        self.previous_push = followups.iter().flatten().map(|event| event.id).collect();
         if followups.is_empty() {
-            followups.push(SyncFollowup {
-                conversation,
-                events: Vec::new(),
-            });
+            followups.push(Vec::new());
         }
-        for followup in followups {
+        for events in followups {
+            let followup = SyncFollowup {
+                conversation,
+                events,
+            };
             backend.validate_view(&outgoing_view)?;
             channel
                 .send(&encode_frame(&if self.v5 {
@@ -808,9 +843,10 @@ where
                 None
             } else {
                 let mut frames = backend
-                    .select_export_frames(&view, conversation, &have, 1)
+                    .select_export_batches(&view, &have, 1, event_frame_budget(conversation)?)
                     .await?;
-                let events = frames.pop().map_or_else(Vec::new, |frame| frame.events);
+                validate_export(conversation, &frames, 1)?;
+                let events = frames.pop().unwrap_or_default();
                 events
                     .iter()
                     .all(|event| supports_event_kind(event.kind, v2, v3, v4, v5))
