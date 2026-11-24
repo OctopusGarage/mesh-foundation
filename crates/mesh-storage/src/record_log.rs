@@ -500,26 +500,27 @@ impl<R: Serialize + DeserializeOwned> EncryptedRecordLog<R> {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
-        let tmp = tempfile::NamedTempFile::new_in(parent)?;
-        let mut writer = BufWriter::new(tmp.as_file());
+        // A normal file avoids Windows NamedTempFile persistence changing
+        // file attributes while the replacement handles are already open.
+        let staging = tempfile::tempdir_in(parent)?;
+        let tmp = staging.path().join("records");
+        let staging_file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        let mut writer = BufWriter::new(&staging_file);
         write(self, &mut writer)?;
         writer.flush()?;
-        sync_file(tmp.as_file())?;
+        sync_file(&staging_file)?;
         drop(writer);
+        drop(staging_file);
 
         // Acquire handles before rename so failure leaves the original open.
-        let f = OpenOptions::new()
-            .read(true)
-            .append(true)
-            .open(tmp.path())?;
+        let f = OpenOptions::new().read(true).append(true).open(&tmp)?;
         #[cfg(windows)]
-        let repair = OpenOptions::new().write(true).open(tmp.path())?;
+        let repair = OpenOptions::new().write(true).open(&tmp)?;
         #[cfg(any(test, feature = "test-observability"))]
         if let Some(hook) = self.before_rewrite_rename.take() {
-            hook(tmp.path());
+            hook(&tmp);
         }
-        tmp.persist(&self.path)
-            .map_err(|error| RecordLogError::Io(error.error))?;
+        std::fs::rename(&tmp, &self.path)?;
         self.needs_sync.store(true, Ordering::Release);
         // Keep the already-open handle: it refers to the rewritten inode even after the
         // rename, so there is no post-rename reopen failure that could leave `self.file`
