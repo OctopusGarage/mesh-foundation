@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 if-addrs = "0.15"
 log = "0.4"
 socket2 = { version = "0.6", features = ["all"] }
-snow = "0.9"
+snow = "0.10"
 tokio = { version = "1", features = ["io-util", "net", "sync"] }
 
 [dev-dependencies]
