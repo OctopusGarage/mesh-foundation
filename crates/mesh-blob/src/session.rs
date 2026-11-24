@@ -19,23 +19,36 @@ fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "invalid blob chunk exchange")
 }
 
+/// Ordered authenticated frames. A host can use its existing secure channel.
+pub trait BlobSession {
+    fn send(&mut self, frame: &[u8]) -> impl Future<Output = Result<(), TransportError>>;
+    fn recv(&mut self) -> impl Future<Output = Result<Vec<u8>, TransportError>>;
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> BlobSession for PeerSession<S> {
+    async fn send(&mut self, frame: &[u8]) -> Result<(), TransportError> {
+        PeerSession::send(self, frame).await
+    }
+
+    async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
+        PeerSession::recv(self).await
+    }
+}
+
+pub type SessionChunkSource<S> = AuthenticatedChunkSource<PeerSession<S>>;
+
 /// One peer's availability snapshot and reusable authenticated connection.
 /// The host performs discovery, verifies the peer and updates availability
 /// by constructing a new source. This adapter returns the wire body as-is.
-pub struct SessionChunkSource<S> {
+pub struct AuthenticatedChunkSource<S> {
     object: [u8; 32],
     available: Vec<bool>,
-    session: Mutex<Option<PeerSession<S>>>,
+    session: Mutex<Option<S>>,
     deadline: Duration,
 }
 
-impl<S> SessionChunkSource<S> {
-    pub fn new(
-        object: [u8; 32],
-        available: Vec<bool>,
-        session: PeerSession<S>,
-        deadline: Duration,
-    ) -> Self {
+impl<S> AuthenticatedChunkSource<S> {
+    pub fn new(object: [u8; 32], available: Vec<bool>, session: S, deadline: Duration) -> Self {
         Self {
             object,
             available,
@@ -45,14 +58,14 @@ impl<S> SessionChunkSource<S> {
     }
 }
 
-impl<S: AsyncRead + AsyncWrite + Unpin> SessionChunkSource<S> {
+impl<S: BlobSession> AuthenticatedChunkSource<S> {
     /// Obtain a bounded availability snapshot on the authenticated connection.
     /// The caller supplies the validated manifest count and its local budget.
     pub async fn discover(
         object: [u8; 32],
         count: u32,
         max_chunks: u32,
-        mut session: PeerSession<S>,
+        mut session: S,
         deadline: Duration,
     ) -> Result<Self, TransportError> {
         if count == 0 || count > max_chunks {
@@ -95,7 +108,7 @@ fn encode_request(tag: &[u8; 4], object: [u8; 32], index: u32, length: u32) -> [
     request
 }
 
-impl<S: AsyncRead + AsyncWrite + Unpin> ChunkSource for SessionChunkSource<S> {
+impl<S: BlobSession> ChunkSource for AuthenticatedChunkSource<S> {
     type Error = TransportError;
 
     fn has_chunk(&self, index: u32) -> bool {
