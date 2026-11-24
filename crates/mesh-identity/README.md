@@ -23,3 +23,11 @@ See the repository [README](https://github.com/OctopusGarage/mesh-foundation#rea
 [contribution guide](https://github.com/OctopusGarage/mesh-foundation/blob/main/CONTRIBUTING.md)
 and [security policy](https://github.com/OctopusGarage/mesh-foundation/blob/main/SECURITY.md).
 Licensed under MIT; see the workspace LICENSE.
+
+## Alpha.2 neutral credential profile
+
+Account certificate and account ID domains use versioned `mesh-foundation-*`
+separators. Device key bytes and device fingerprints are unchanged. Applications
+requiring historic product-specific account IDs and certificate signatures must
+keep their original profile adapter; do not reinterpret existing signatures under
+the new domains. Enrollment, trust, revocation and recovery remain host policy.

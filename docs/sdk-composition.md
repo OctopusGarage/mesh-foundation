@@ -1,242 +1,75 @@
 # Composing Mesh Foundation
 
-## Choose the smallest useful set of crates
+This document describes the unreleased alpha.2 interfaces. Published alpha.1 has
+its original compatibility surface; see [migration](business-neutral-migration.md).
 
-The default features preserve the existing Mesh Talk source and wire interfaces.
-New consumers can opt into a smaller dependency graph.
+## Select mechanisms, define your own application
 
-| Need | Start with | Internal dependencies |
+| Need | Crate / entry point | Host responsibilities |
 | --- | --- | --- |
-| Pinned-key encrypted frame exchange | `mesh-connect` with default features disabled | No other Mesh crate. Add `signed-discovery` for the existing device and account announcement format, which uses `mesh-identity`. |
-| Inventory and bounded reconciliation primitives | `mesh-replication` with default features disabled | No other Mesh crate. Add `mesh-connect` for direct use of its pinned session, or implement the session interface for a different carrier. |
-| Existing Mesh Talk reconciliation protocol | `mesh-replication/legacy-wire` | `mesh-identity` for the signed Event schema. Keep this feature for mixed-version Mesh Talk peers. |
-| Device or account credential verification | `mesh-identity` | None |
-| End-to-end content encryption | `mesh-e2ee` | None |
-| Encrypted local record log | `mesh-storage` | None |
-| Offline custody and incremental retrieval | `mesh-mailbox` | `mesh-identity`, `mesh-replication/legacy-wire` and `mesh-storage`. |
-| Attachment chunks and stream verification | `mesh-blob` | None |
+| Authenticated encrypted byte stream | `mesh-connect::PeerSession` | Trusted peer keys, admission, deadlines and reconnect scheduling |
+| Protocol/version agreement | `mesh-connect::capability` | Application protocol IDs, authenticated negotiation and dispatch |
+| Signed discovery | `mesh-connect::discovery::announce` | Namespace, capability meaning, freshness and trust |
+| Scoped inventory and differences | `mesh-replication::{CompleteInventory, inventory_session, range}` | Authorized finite snapshots and index maintenance |
+| Bounded opaque bodies | `mesh-replication::{pull, driver, history}` | Record schema, verification and atomic durable commit |
+| Signing and certificates | `mesh-identity::{device, account}` | Account trust, enrollment, revocation and application identifiers |
+| End-to-end encryption | `mesh-e2ee::{ratchet, sender_key}` | Key establishment/distribution, membership policy and atomic checkpoint commit |
+| Durable encrypted records | `mesh-storage::record_log` | Indexed models, path ownership and lifecycle |
+| Store-and-forward opaque bytes | `mesh-mailbox::{Record, service, client, spool}` | Authentication, payload encryption, recipient addressing, expiry scheduling and federation |
+| Verified large content | `mesh-blob` | Manifests, consent, staging, publication and retention |
 
-Arrows point from a dependent to its dependency. Dashed arrows are selected
-by a feature. The mailbox requests the legacy Event profile explicitly.
+`mesh-replication` has no default features and no application event enum.
+`mesh-connect` without default features still provides sessions and capability
+version intersection. Its optional `signed-discovery` feature adds identity and
+serialization for neutral advertisements. Mailbox production code depends only
+on generic replication/storage, not account or device identities. Blob's optional
+`mesh-connect` feature provides the direct byte-session adapter.
 
-```mermaid
-flowchart LR
-    C[mesh-connect] -. signed-discovery .-> I[mesh-identity]
-    R[mesh-replication] -. legacy-wire .-> I
-    R -. mesh-connect .-> C
-    M[mesh-mailbox] --> I
-    M -->|legacy-wire| R
-    M --> S[mesh-storage]
-    E[mesh-e2ee]
-    B[mesh-blob]
-```
+## Safe composition order
 
-Cargo unifies features. Turning off defaults in one declaration does not turn off
-a feature requested by another dependency. Inspect the resolved graph with
-`cargo tree -e features`. See [SDK delivery](sdk-delivery.md) for Git pins.
+1. Define application-owned protocol IDs, record schemas and scope identifiers.
+   A forum may define posts, revisions and withdrawals; a chat application may
+   define membership changes. Neither vocabulary is part of this SDK.
+2. Authenticate a pinned session and apply current host admission policy.
+   A signed discovery capability is a hint, never permission or a session binding.
+3. Negotiate a supported protocol/version using bounded capability descriptions.
+   `capability::negotiate` intersects two validated version ranges. It is a pure
+   mechanism: hosts exchange and authenticate those descriptions themselves.
+4. Capture an authorized source snapshot. Compare summaries or bounded inventory,
+   then retrieve bodies under record, byte, request and scan budgets. SDK recent
+   pages operate on opaque ordered records, not a special chat Message type.
+5. Authenticate application payloads and recheck current access. Atomically commit
+   accepted bodies, cryptographic receive state and the corresponding cursor.
+   A failed/cancelled batch must not acknowledge progress it did not commit.
+6. Schedule another bounded turn through the application's existing owner.
+   Page exhaustion proves only that source snapshot's coverage, not global equality.
 
-## Connect and replicate
+## Opaque mailbox profile
 
-Enable `mesh-replication/mesh-connect` to pass a
-`mesh_connect::PeerSession<S>` directly to
-`mesh_replication::session::send_have` and `receive_have`.
-The session authenticates a previously trusted peer static key and supplies
-encrypted, ordered frames over the caller's byte stream. Pick the key before
-dialing. After an interrupted frame, create a new session.
+`Record::new(scope, bytes)` content-addresses opaque bytes under that scope. The
+SDK verifies this hash and scope; it cannot establish authorship or permission.
+Encrypt and authenticate your payload before depositing it and before accepting
+it at retrieval. `MailboxStore` replaces the query backend; `ReconciliationSession`
+replaces the transport. The supplied spool owns its exclusive writer lease and
+applies count/byte limits. The supplied spool expires its entire first-seen
+retention window; it does not implement per-record TTL. Expiry invalidates old
+cursors by changing its epoch. Supply a different MailboxStore for another policy.
 
-For an SDK sibling checkout, a consumer that uses a pinned session and its own
-record schema can start with:
+The generic mailbox has a new `MFOM1` wire profile and `MFMSP1` spool format. It
+never interprets chat events. An application-specific envelope can contain a
+signed document, an encrypted notification, a forum update or any host schema.
+Use `cargo run -p mesh-foundation-mailbox --example opaque_mailbox` for a durable
+example and the TCP tests for authenticated reconnect/cursor resumption.
 
-```toml
-[dependencies]
-mesh-connect = { path = "../mesh-foundation/crates/mesh-connect", default-features = false }
-mesh-replication = { path = "../mesh-foundation/crates/mesh-replication", default-features = false, features = ["mesh-connect"] }
-```
+## Application compatibility belongs to consumers
 
-A consumer testing a newly introduced feature should pin a revision that
-declares it, or use direct path dependencies for all SDK crates in a disposable
-checkout. An override against an older locked Git revision can fail during
-feature resolution. Restore the consumer's Git pins and lockfile before
-committing permanent changes.
+Mesh Talk's `mesh-talk-protocol` crate owns its original event IDs, event-kind
+indices, account/device fingerprint domains, certificates, discovery packets,
+legacy sync rounds, recipient-pair envelopes and old mailbox spool format. It
+composes the SDK's generic session, storage and quota mechanisms. The SDK does
+not import or publish that crate. Forum records are defined in Mesh Forum and
+contain no group membership, announcement or chat consent types.
 
-1. Give the connection a reliable ordered stream such as TCP. Other ordered
-   byte streams can use the same session. A differently framed carrier
-   implements `ReconciliationSession` and supplies its own verified peer.
-2. Choose the scope and authorize the local inventory before exporting it.
-   Capture a finite view. The default `inventory_session::send_inventory`
-   sends a canonical set with an explicit sender and a scope, and calls
-   the authorization callback before each page. The matching
-   `inventory_session::receive_inventory` verifies these fields. For
-   streaming store views and other codecs, use `HaveSource::validate`
-   to recheck authority before each outgoing page.
-3. Bound the receive by frames, IDs per frame and total IDs. The Have stream
-   preserves raw IDs, including duplicates. Use
-   `receive_inventory` when the caller needs the final canonical set. It
-   collects and sorts in place, rejecting duplicates across page boundaries.
-   Use `CompleteInventory::from_ids` for the local authorized set and
-   `remote.missing_from(&local)` for IDs absent locally.
-4. Choose the record exchange. With the default profile, the reader calls
-   `pull_over_session`. The sender handles each request with
-   `serve_record_request` and supplies a loader that checks the authenticated
-   peer's current scope access. The SDK binds both frames to the scope and caps
-   header, record and body sizes before copying response bodies. Applications
-   with a different wire format can use `pull_missing` with their own fetch
-   callback.
-5. In either profile, the commit callback verifies content IDs, signatures and
-   current authorization, then commits the whole batch atomically. A later
-   failure leaves earlier commits intact and reports them in
-   `PullError::committed`. Resume after reconnect with a fresh local
-   inventory. An empty difference performs no fetch.
-
-Mesh Forum's board test runs canonical inventory comparison and the default
-record exchange on authenticated TCP. It verifies the board and author,
-commits to an encrypted log, then reopens the log to verify persistence.
-The host handles exchange dispatch and owns the connection lifetime.
-
-The generic inventory is ordering and set-comparison machinery. It has no
-record authorization, delivery receipt or application payload schema. The
-legacy round owns the additional Mesh Talk negotiation and transfer rules
-when interoperability with that protocol is required.
-
-## What can be replaced today
-
-| Role | Replacement point | Evidence and limits |
-| --- | --- | --- |
-| Underlying connection | Byte stream under `PeerSession` | TCP and in-memory duplex are exercised. Session encryption and frame limits stay the same. |
-| Replication carrier | `ReconciliationSession` | Mesh Talk uses a policy-gated authenticated channel. Mesh Forum uses a pinned-key TCP session. |
-| Replication data source | `HaveSource`, `ExportSource` and legacy round store interface | A source owns authorization, finite views and cursor semantics. The round owns wire framing and progress. |
-| Mailbox query backend | `MailboxStore` | The standalone spool and Mesh Talk's indexed store both use the same request dispatch path. |
-| Mailbox event schema and durable spool | Currently concrete | `RelayMailbox` and the provided spool use the existing signed Event and encrypted log. A new transport does not require a schema change. A different record schema would need its own envelope and durable adapter with independent compatibility evidence. |
-| Content encryption, attachment storage and identity policy | Application composition | Replication carries opaque bytes and does not need decryption keys. Blob verification stages bytes through the application. Account trust and key rotation remain application decisions. |
-
-## Naming and safe call order
-
-- **Peer vs device vs account.** `PeerSession::peer_key` is the authenticated
-  transport key. `DeviceCertificate::verify_for_device` verifies the
-  account's signature over the expected device signing key. An application
-  decides whether to trust the issuer before granting access.
-- **Inventory vs Have.** Inventory is the general concept. Have is retained
-  where the interface represents the paged exchange and historical frames.
-  Use inventory in app-facing names and documentation. Qualify the two
-  current Event ID types by module when interoperating with legacy bytes.
-- **Custody vs delivery.** `Spool::deposit` and `durable_have` describe
-  relay retention. They do not prove delivery to a recipient. Use `open`
-  on the recipient to authenticate and unwrap the envelope.
-- **Prepare vs commit.** `prepare_open` prepares a receive candidate.
-  `install` checks the in-memory generation. A durable consumer checks the
-  persisted base and commits the accepted event and new checkpoint together.
-- **Append vs publication.** `append_durable` acknowledges a synced record.
-  `BlobVerifier::finish` validates the staged stream. Only the application
-  publishes the verified bytes. Retain and replay a contiguous prefix when
-  resuming verification after restart.
-
-For new typed entry points, prefer domain names over protocol abbreviations
-and document the state transition an operation confirms. Keep existing public
-names and compatible wire tags until there is a tested migration path.
-
-
-## Further interface work
-
-The optional session adapter removes repeated peer, send and receive forwarding
-without introducing a shared transport crate. Keep the carrier swappable at the
-existing session interface. Keep the mailbox's concrete envelope for the
-existing wire format until another application needs a different signed record
-schema behind the same retention lifecycle.
-
-New consumers can start at the inventory-oriented receive entry point. The
-low-level Have functions let a custom protocol retain its codec and admit raw
-IDs before canonicalizing them.
-Two Event ID forms, raw inventory IDs and signed legacy Event IDs, still need an
-explicit conversion when crossing profiles. A future typed common ID requires
-a migration plan for constructor names and existing callers.
-
-The bounded indexed driver and mailbox acknowledgement APIs are described in
-[bounded synchronization](bounded-sync.md). Use these for caller-scheduled turns;
-the original pull functions drain the entire captured difference.
-
-The generic pull accepts either the SDK record exchange adapter or the
-application's own fetch callback, together with a commit callback. A new record schema defines its authorization, ID verification and
-transaction rules there. The SDK supplies selection, batching, response
-validation and durable-progress accounting.
-
-## Safe defaults and application parameters
-
-- `DiscoveryConfig` binds a caller-selected IPv4 multicast group and UDP
-  port. The bound socket reports the matching target and can refresh
-  group membership after an interface change. The host schedules discovery.
-- `DeviceCertificate::verified_issuer_for_device` returns issuer material
-  only after verifying the expected device binding. Trust remains with
-  the application.
-- `RatchetState::ratchet_decrypt` changes live receive state only after
-  authentication. Persisting a successful state alongside application
-  records still requires the host's transaction.
-- `BlobLayout` validates the total size, chunk size and index range.
-  `BlobVerifier::for_layout` checks exact per-chunk lengths. Hosts
-  select the maximum size and stage bytes until final verification.
-- `EncryptedRecordLog::open_with_key_and_frame_limit` takes a key
-  resolver and bounds each frame during reads and writes. A lower limit
-  can reject an existing log and does not rewrite its stored records.
-- `Spool::open_with_key_provider` uses the caller's key resolver and the
-  spool's internal frame ceiling. The spool still owns its file
-  backend, lease and cursor. `MailboxStore` remains the read adapter.
-- The mailbox host owns connection admission, deadlines and idle retirement.
-  Reuse one authenticated stream for sequential delta and body requests under
-  the same negotiated scope. Recheck authorization for each request. After
-  interrupted I/O, reopen the stream and resume from the last cursor whose
-  selected bodies the consumer committed.
-
-## Sparse blob reception
-
-Authenticate the object manifest and bind a private staging store to that exact
-version before constructing a `SparseBlobReceiver`. Use `restore` to rebuild
-progress from staged chunks. Intersect `missing` with each authorized source's
-advertised availability and exclude requests already in flight. Feed authenticated,
-decrypted replies through `accept`; only successful durable writes advance
-progress. Call `verify` before publishing the assembled object. The host owns
-the transfer protocol, request concurrency, and final publication.
-
-Use `DirectoryChunkStore` for private file-per-chunk staging, with one writer
-per object version. `SparseBlobReceiver::download` rotates across the supplied
-sources, bounds concurrent requests, and retries other sources for an
-unavailable or invalid chunk. A completed request frees its slot immediately,
-so a slow source does not hold up unrelated requests. If every source fails
-for one chunk, in-flight requests can still commit before the error returns.
-Hosts supply authorized availability snapshots.
-Reopen the staging directory and call `restore` before resuming.
-
-With the `mesh-connect` feature, a host uses `SessionChunkSource` on a
-dedicated authenticated session and dispatches `serve_chunk` at providers.
-The loader enforces current object access on each request, regardless of
-whether the provider is an app or a relay. For private objects, providers
-serve indexed ciphertext and the receiver wraps each source in
-`EncryptedChunkSource`. Keep the plaintext staging directory private.
-The transport's frame ceiling includes the AEAD tag, so choose a chunk
-layout that fits before publishing a manifest.
-
-On the dedicated session, `SessionChunkSource::discover` fetches the
-availability snapshot in bounded pages before requesting data. Providers
-dispatch both request types via `serve_request` and check object access
-independently for availability and content. The host still discovers
-candidate peers and determines which peer identities it can contact.
-
-## Diagnostics and application events
-
-Install a log or tracing subscriber in the application. SDK diagnostics and
-per-operation progress are intended for telemetry. Publish application events
-from your own transaction boundary when consumers require replay or deduplication.
-
-| Crate | Integration point |
-| --- | --- |
-| `mesh-connect` | Classify session and frame failures with `TransportError::kind()`. The host owns discovery, routing and connection lifecycle, so measure attempts and latency around those entry points. |
-| `mesh-identity` | Use `check_issuer_for_device` for a certificate outcome and apply your own issuer trust policy. Keep account and device keys out of metric labels. |
-| `mesh-e2ee` | Use the typed ratchet error or `SenderKeyError::kind()`. Emit business notifications after the host commits decrypted state. |
-| `mesh-replication` | Use `pull_missing_observed` for an atomic batch's committed record count, and the returned result for success or failure. Legacy-wire callers can instrument their own commit adapter. |
-| `mesh-storage` | Use `rewrite_report` and `append_batch_atomic_report` for visible replacement and directory durability status. Treat a pending sync as a durability issue and keep indexes aligned with the visible replacement. |
-| `mesh-mailbox` | Use `usage`, `expire_report` and the deposit outcome for occupancy, scheduled expiry and local custody. Use `deposit_observed` to report expiry committed during deposit, even if the new envelope fails to store. |
-| `mesh-blob` | Use `download_observed` for source rejections, newly stored chunks and final verification. After restore, use `stored_chunks` to seed progress. Emit publication separately after the host publishes the verified object. |
-
-Callbacks run inline, including on async workers. Keep them nonblocking and
-bounded. For metrics or UI, aggregate counts and coalesce updates in the
-application. Chunk completions can arrive out of order. Handle terminal errors
-from the returned result and infer cancellation from task ownership. Avoid
-logging raw payloads, key material, local paths, or raw error strings by default.
+Cryptographic ratchets, sender-key state machines and encrypted record framing
+remain reusable SDK mechanisms. Keeping a stable cryptographic checkpoint is
+separate from retaining an application's group lifecycle or access policy.

@@ -19,7 +19,9 @@ The tested toolchain is Rust 1.99.0; an MSRV has not been established.
 [Delivery](docs/sdk-delivery.md) · [Contributing](CONTRIBUTING.md) ·
 [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
-Current development targets `0.1.0-alpha.2` (not yet published). See
+Current development targets `0.1.0-alpha.2` (not yet published), with intentionally
+breaking [business-neutral interfaces](docs/business-neutral-migration.md). Published
+alpha.1 retains its earlier compatibility surface. See
 [bounded incremental synchronization](docs/bounded-sync.md) for new turn budgets,
 range reconciliation and mailbox acknowledgement APIs. See [recent history](docs/recent-history.md)
 for explicit recent/older pages and fallible disk-backed range readers. Installed alpha.1 packages
@@ -64,12 +66,12 @@ using the command above; registry package names use the `mesh-foundation-*` pref
 | Crate | Default features | Optional integration |
 | --- | --- | --- |
 | [mesh-connect](crates/mesh-connect/README.md) | `signed-discovery` | Disable defaults for session primitives without signed discovery |
-| [mesh-replication](crates/mesh-replication/README.md) | `legacy-wire` | `mesh-connect` binds transport-independent replication to peer sessions |
+| [mesh-replication](crates/mesh-replication/README.md) | None | `mesh-connect` binds transport-independent replication to peer sessions |
 | [mesh-blob](crates/mesh-blob/README.md) | None | `mesh-connect` enables session transfer adapters |
 | [mesh-identity](crates/mesh-identity/README.md) | None | Device and account signing identities |
 | [mesh-e2ee](crates/mesh-e2ee/README.md) | None | Ratchet and sender-key primitives |
 | [mesh-storage](crates/mesh-storage/README.md) | None | Encrypted record logs |
-| [mesh-mailbox](crates/mesh-mailbox/README.md) | None | Opaque mailbox envelopes and durable spool |
+| [mesh-mailbox](crates/mesh-mailbox/README.md) | None | Opaque records, bounded retrieval and durable spool |
 
 `test-observability`, where available, is intended for compatibility tests.
 Cargo unifies features across a dependency graph; check the resolved graph when
@@ -98,7 +100,7 @@ byte stream. Pass a connected TCP stream or an equivalent transport. Provide
 a trusted public key to dial and an admission policy to accept. A failed or
 cancelled in-flight frame closes the stream and retires the session. Dial a
 new session to retry. The package also exposes
-LAN sockets, signed discovery announcements and queries, and candidate
+LAN sockets, signed discovery advertisements, and candidate
 selection. A host runs discovery, provides its trust policy and schedules
 reconnects. Mesh Talk composes the same frame primitives with its existing
 application handshake and session pooling.
@@ -106,9 +108,9 @@ application handshake and session pooling.
 `mesh-replication` provides bounded ID inventory assembly, canonical digests,
 and exact set differences. Its generic primitives are independent of
 `mesh-connect`. Enable the optional `mesh-connect` feature for direct
-composition with a pinned session. The default `legacy-wire` feature includes
-the requester and responder for the existing Mesh Talk wire protocol.
-The round engine owns inventory framing, direction and bounds. Callers supply
+composition with a pinned session. Replication has no default application profile;
+its records are opaque and all application authorization comes from host adapters.
+The generic session helpers own bounded inventory and export framing. Callers supply
 the current authorized store, reserve memory for the remote inventory before
 its first read and supply an authenticated session.
 
@@ -124,7 +126,7 @@ rejection.
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Pairwise ratchets, group sender keys and checkpoints available. In-memory installation rejects stale candidates. Hosts own key distribution and must compare the persisted checkpoint before committing a durable candidate. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
 | `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption and durable append/rewrite available. Applications own indexed data models and profile lifecycle. |
-| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Opaque envelopes, negotiated delta requests, quota policy and durable per-mailbox spool available. The spool owns its writer lease. Hosts own admission, expiry scheduling and federation. |
+| `mesh-mailbox` | Opaque recipient-addressed deposits, retrieval, expiry, quotas and custody confirmation | Opaque records, negotiated delta requests, quota policy and durable per-mailbox spool available. The spool owns its writer lease. Hosts own admission, expiry scheduling and federation. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and ordered stream verification available. Hosts stage bytes until verification succeeds and own transfer scheduling, manifests, consent and retention. |
 
 Replication owns its session and store contracts. A composition adapter binds a
@@ -139,9 +141,10 @@ packages through a forum consumer and existing Mesh Talk paths before publishing
 a stable interface. For encrypted content, preserve the atomic commit of an
 accepted event and its updated receive state across failures and restarts.
 
-The Mesh Talk-specific mailbox envelope uses the device identities in
-`mesh-identity` and the compatible signed event codec under
-`mesh-replication::legacy_event`. It can be carried by any suitable transport.
+Application-owned compatibility codecs live in Mesh Talk's `mesh-talk-protocol`,
+not in this SDK. Forum consumers define their own post/revision schemas. See the
+[business-neutral alpha.2 migration](docs/business-neutral-migration.md) for changed
+identity domains, discovery and mailbox profiles, and preserved application bytes.
 
 ## Community and license
 

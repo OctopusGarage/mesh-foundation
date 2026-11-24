@@ -613,9 +613,7 @@ dependencies = [
 name = "mesh-foundation-mailbox"
 version = "0.1.0-alpha.2"
 dependencies = [
- "aes-gcm 0.11.1",
  "bincode",
- "hkdf",
  "mesh-foundation-connect",
  "mesh-foundation-identity",
  "mesh-foundation-replication",
@@ -625,20 +623,14 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
- "x25519-dalek",
- "zeroize",
 ]
 
 [[package]]
 name = "mesh-foundation-replication"
 version = "0.1.0-alpha.2"
 dependencies = [
- "bincode",
  "hex",
- "log",
  "mesh-foundation-connect",
- "mesh-foundation-identity",
- "serde",
  "sha2 0.10.9",
  "tokio",
  "x25519-dalek",

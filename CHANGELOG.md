@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Breaking:** remove Mesh Talk event/wire/round APIs and the `legacy-wire` feature;
+  consumer-owned protocol crates preserve application compatibility.
+- **Breaking:** introduce neutral node/account identity and signed discovery profiles;
+  applications retain their old identifier/certificate domains explicitly.
+- **Breaking:** mailbox stores opaque records with neutral wire/disk profiles;
+  recipient-pair chat envelopes move to Mesh Talk.
+- Add independent bounded protocol capability negotiation, source boundary guards,
+  and a generic durable mailbox example. See `docs/business-neutral-migration.md`.
+
 - Add typed SDK diagnostics, committed progress callbacks, and durability reports.
 - Add source/scope-bound recent-history pages with explicit older navigation and atomic cursor commits.
 - Add fallible range-reader checkpoint APIs for disk-backed authorized indexes.
