@@ -187,3 +187,22 @@ class SnapshotTests(unittest.TestCase):
             with self.assertRaises(OSError):snapshot.export_snapshot(self.source,self.dest)
         self.assertEqual(snapshot.verify_snapshot(self.dest,self.source),old)
         self.assertFalse(snapshot.backup_path(self.dest).exists())
+
+    def test_empty_recovery_target_cannot_authorize_backup_deletion(self):
+        snapshot.export_snapshot(self.source,self.dest)
+        backup=snapshot.backup_path(self.dest)
+        self.dest.rename(backup);self.dest.mkdir()
+        with self.assertRaises(ValueError):
+            snapshot.export_snapshot(self.source,self.dest)
+        snapshot.verify_snapshot(backup,self.source)
+        self.assertEqual(list(self.dest.iterdir()),[])
+        # Removing only the empty external placeholder permits normal recovery.
+        self.dest.rmdir()
+        snapshot.export_snapshot(self.source,self.dest)
+        snapshot.verify_snapshot(self.dest,self.source)
+        self.assertFalse(backup.exists())
+
+    def test_empty_directory_is_still_a_valid_fresh_install_target(self):
+        self.dest.mkdir()
+        snapshot.export_snapshot(self.source,self.dest)
+        snapshot.verify_snapshot(self.dest,self.source)

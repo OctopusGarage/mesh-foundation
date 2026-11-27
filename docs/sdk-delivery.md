@@ -208,3 +208,10 @@ and restores an interrupted backup, or removes it only after verifying the
 installed destination too. Unknown/modified backups are preserved and rejected.
 This is source-update recovery, not a database transaction or filesystem durability
 promise across power loss; the reviewed Git commit remains authoritative.
+
+Recovery verification never treats an empty target as an installed snapshot.
+If an external operation recreated the target as an empty directory while a
+verified backup remains, export rejects the ambiguous state and preserves both.
+Verify the backup and remove only the empty placeholder with `rmdir` before
+retrying. An empty directory remains supported for a fresh installation when
+there is no recovery backup.
