@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Improve source-alpha onboarding with task-based entry points and a pinned TCP/SQLite recipe.
+- Add standard error source chains for reader/range/driver failures and a bounded body-fetch operation without commit acknowledgement.
+
 - Maintain the SQLite reference index transactionally without per-turn rebuilding;
   share compressed-prefix mathematics and opt-in development reader conformance probes.
 

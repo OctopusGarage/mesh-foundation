@@ -678,6 +678,7 @@ version = "0.1.0-alpha.2"
 dependencies = [
  "hex",
  "mesh-foundation-connect",
+ "mesh-foundation-identity",
  "rusqlite",
  "sha2 0.10.9",
  "tempfile",

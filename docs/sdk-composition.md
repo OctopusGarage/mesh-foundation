@@ -3,6 +3,10 @@
 This document describes the unreleased alpha.2 interfaces. Published alpha.1 has
 its original compatibility surface; see [migration](business-neutral-migration.md).
 
+For a task-to-entry-point choice and the first runnable persistent peer exchange,
+start with [first integration](getting-started.md). This guide owns the detailed
+host contracts.
+
 ## Select mechanisms, define your own application
 
 | Need | Crate / entry point | Host responsibilities |
