@@ -81,3 +81,8 @@ class SnapshotTests(unittest.TestCase):
         for value in ([], dict(original, files={'../escape': '0'*64})):
             path.write_text(json.dumps(value))
             with self.assertRaises(ValueError): snapshot.verify_snapshot(self.dest)
+
+    def test_sibling_destination_with_parent_segments_is_supported(self):
+        destination = self.source.resolve() / '..' / 'sibling'
+        snapshot.export_snapshot(self.source, destination)
+        snapshot.verify_snapshot(destination, self.source)

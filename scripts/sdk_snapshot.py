@@ -87,7 +87,9 @@ def verify_snapshot(destination, source=None):
 
 
 def export_snapshot(source, destination):
-    source, destination = Path(source).resolve(), Path(destination).absolute()
+    if Path(destination).is_symlink():
+        raise ValueError("snapshot destination must not be a symlink")
+    source, destination = Path(source).resolve(), Path(destination).resolve()
     if destination == source or source in destination.parents:
         raise ValueError('destination must be outside the source checkout')
     if git(source, 'status', '--porcelain', '--untracked-files=normal').strip():
