@@ -101,3 +101,89 @@ class SnapshotTests(unittest.TestCase):
         checkout = self.root / 'checkout'
         subprocess.check_call(['git', '-c', 'core.autocrlf=true', 'clone', '-q', str(consumer), str(checkout)])
         snapshot.verify_snapshot(checkout / 'vendor/sdk', self.source)
+
+    def test_failed_install_and_failed_restore_preserve_recoverable_backup(self):
+        from unittest.mock import patch
+        snapshot.export_snapshot(self.source, self.dest)
+        original = Path.rename
+        def fail_install_and_restore(path, target):
+            if path.name == 'snapshot' or path == snapshot.backup_path(self.dest):
+                raise OSError('injected rename failure')
+            return original(path, target)
+        with patch.object(Path, 'rename', fail_install_and_restore):
+            with self.assertRaises(OSError): snapshot.export_snapshot(self.source, self.dest)
+        backup = snapshot.backup_path(self.dest)
+        snapshot.verify_snapshot(backup, self.source)
+        self.assertFalse(self.dest.exists())
+        snapshot.export_snapshot(self.source, self.dest)
+        snapshot.verify_snapshot(self.dest, self.source)
+        self.assertFalse(backup.exists())
+
+    def test_destination_has_one_writer_and_lease_is_released_after_error(self):
+        with snapshot.destination_lock(self.dest):
+            with self.assertRaisesRegex(ValueError, 'busy'):
+                snapshot.export_snapshot(self.source, self.dest)
+        snapshot.export_snapshot(self.source, self.dest)
+        snapshot.verify_snapshot(self.dest, self.source)
+
+    def test_verified_backup_after_completed_install_is_cleaned_on_retry(self):
+        import shutil
+        snapshot.export_snapshot(self.source, self.dest)
+        backup = snapshot.backup_path(self.dest)
+        shutil.copytree(self.dest, backup)
+        snapshot.export_snapshot(self.source, self.dest)
+        self.assertFalse(backup.exists())
+        snapshot.verify_snapshot(self.dest, self.source)
+
+    def test_process_exit_releases_destination_lease(self):
+        import sys
+        code = ('import sys;from pathlib import Path;'
+                'sys.path.insert(0,sys.argv[1]);import sdk_snapshot;'
+                '\nwith sdk_snapshot.destination_lock(Path(sys.argv[2])):\n'
+                ' print("locked",flush=True)\n sys.stdin.read()\n')
+        with subprocess.Popen([sys.executable, '-u', '-c', code,
+                               str(Path(snapshot.__file__).parent), str(self.dest)],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True) as child:
+            try:
+                self.assertEqual(child.stdout.readline().strip(), 'locked')
+                with self.assertRaisesRegex(ValueError, 'busy'):
+                    snapshot.export_snapshot(self.source, self.dest)
+            finally:
+                child.terminate(); child.wait(timeout=5)
+        snapshot.export_snapshot(self.source, self.dest)
+        snapshot.verify_snapshot(self.dest, self.source)
+
+    def test_lease_identity_is_independent_of_process_temporary_directory(self):
+        import os
+        import sys
+        other=self.root/'other-temp';other.mkdir()
+        code=('import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);import sdk_snapshot;'
+              '\ntry:\n with sdk_snapshot.destination_lock(Path(sys.argv[2])):sys.exit(9)\n'
+              'except ValueError as error:\n sys.exit(0 if "busy" in str(error) else 8)\n')
+        env=dict(os.environ,TMPDIR=str(other),TEMP=str(other),TMP=str(other))
+        with snapshot.destination_lock(self.dest):
+            result=subprocess.run([sys.executable,'-c',code,str(Path(snapshot.__file__).parent),str(self.dest)],env=env,timeout=10)
+            self.assertEqual(result.returncode,0)
+
+    def test_unknown_recovery_directory_is_preserved_and_rejected(self):
+        snapshot.export_snapshot(self.source,self.dest)
+        backup=snapshot.backup_path(self.dest);backup.mkdir()
+        owned=backup/'unrelated';owned.write_text('preserve')
+        with self.assertRaises(ValueError):snapshot.export_snapshot(self.source,self.dest)
+        self.assertEqual(owned.read_text(),'preserve')
+        snapshot.verify_snapshot(self.dest,self.source)
+
+    def test_failed_install_restores_the_previous_source_revision(self):
+        from unittest.mock import patch
+        snapshot.export_snapshot(self.source,self.dest)
+        old=snapshot.verify_snapshot(self.dest,self.source)
+        (self.source/'README.md').write_text('new revision');self.commit()
+        original=Path.rename
+        def fail_install(path,target):
+            if path.name=='snapshot':raise OSError('injected install failure')
+            return original(path,target)
+        with patch.object(Path,'rename',fail_install):
+            with self.assertRaises(OSError):snapshot.export_snapshot(self.source,self.dest)
+        self.assertEqual(snapshot.verify_snapshot(self.dest,self.source),old)
+        self.assertFalse(snapshot.backup_path(self.dest).exists())

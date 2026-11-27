@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Share finite-window pagination across host-owned cursors and record IDs while
+  retaining the neutral mailbox convenience types and serialized page layout.
+- Add checked depth-only range summary composition for persistent adapters.
+- Serialize snapshot updates with OS leases and retain verified recovery backups
+  after failed installation/restoration; retries recover interrupted updates.
+
 - Clarify host-owned storage/discovery responsibilities and historical crypto
   profile compatibility; pin HKDF outputs and receiver checkpoint bytes.
 - Strengthen architecture guards for compact application references and aliased

@@ -193,3 +193,18 @@ with the reviewed SDK Git checkout to verify provenance against the recorded
 commit. Export builds and verifies a staged directory before replacing an existing
 verified snapshot; keep ordinary Git recovery for interrupted updates. Do not
 modify the managed copy; change the SDK, commit, export, and verify the consumer.
+
+Snapshot updates acquire a nonblocking OS lease for the canonical destination.
+The stable one-byte `.mesh-NAME.snapshot-lock` inode lives beside the destination,
+so processes with different temporary directories still share one lease. Ignore
+`.mesh-*.snapshot-lock` in the consumer repository; the inode is runtime metadata,
+not part of the managed source, and process exit releases ownership. Concurrent
+updates report busy rather than racing verification and replacement.
+
+The previous verified tree is kept at the sibling `.NAME.snapshot-backup` path,
+outside automatic staging cleanup. If installation and restoration both fail,
+the error names that retained backup. A retry from a clean SDK checkout verifies
+and restores an interrupted backup, or removes it only after verifying the
+installed destination too. Unknown/modified backups are preserved and rejected.
+This is source-update recovery, not a database transaction or filesystem durability
+promise across power loss; the reviewed Git commit remains authoritative.

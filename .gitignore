@@ -5,3 +5,6 @@ __pycache__/
 
 # Local implementation plans and validation output.
 /tmp/
+
+# Stable OS lease inodes next to managed source snapshots.
+.mesh-*.snapshot-lock

@@ -163,3 +163,22 @@ uses the high-level driver. Preserve that distinction when describing maturity.
 The optional blob session adapter intentionally uses mesh-connect framing and
 errors. Use the transport-independent chunk interfaces for other carriers; extend
 the session port only when a real additional carrier needs it.
+
+## Shared finite-window pagination
+
+`delta::WindowSelection<C, I>` and `WindowScan<C, I>` own bounded ordinal selection,
+lookahead, pinned upper windows and completion/reset transitions. `DeltaCursor`
+lets a host qualify its own binding and expose only `DeltaPosition`; updating the
+position must preserve identity/epoch/host metadata. `WindowPage<C, I>` has the
+same four-field page shape. The existing neutral `DeltaSelection`, `DeltaScan`
+and `MailboxDeltaPage` names remain concrete convenience aliases.
+
+An application with a historical protocol can implement this small cursor port,
+retain its old serialized cursor and IDs, and impose its own request ceiling.
+It must not omit historical binding fields when implementing `accepts`. The SDK
+neither interprets those fields nor gains authority from a cursor. Page completion
+is still source-local; the host commits bodies and cursor together.
+
+Persistent range writers can call `Summary::combine_at_depth` with a known parent
+depth. It checks leaf depth and count overflow without constructing synthetic
+prefixes; `Summary::combine(Prefix, ...)` remains available and uses the same rule.
