@@ -151,6 +151,32 @@ advancing a checkpoint, and retain or discard discovered work with its commit.
 The host owns SQL transactions, snapshot qualification, commit atomicity and
 scheduling. Keep policy/causal recovery outside this shared mathematical kernel.
 
+### Commit-gated persistent reader turns
+
+`reader::prepare` borrows a checkpoint and pinned `RangeRead`. Supply named
+`ReaderSource` facts, per-turn query/record allowances, current authorization and
+bounded frame exchange. It does not mutate the original checkpoint. A prepared
+turn exposes only missing IDs, examined queries and source-local discovery
+progress; the next checkpoint is private. Fetch the exact selected bodies under
+separate byte/request limits, verify their application signatures, then call
+`prepared.commit` with the host's synchronous atomic transaction. The callback
+must requalify source/view/authority inside that transaction and leave bodies,
+receive state and cursor unchanged on error. Only callback success releases the
+next checkpoint. Cancellation or body-fetch/commit failure drops the prepared
+turn and retains the prior checkpoint; idempotent restart reads committed data.
+
+Use the returned checkpoint only with the same pinned local snapshot. If it has
+changed or expired, restart from a fresh committed snapshot. `Complete` describes
+that finite discovery frontier, never global equality or recipient delivery.
+A record allowance smaller than one leaf batch returns `RecordAllowance`, not
+empty completion. A batch that only exceeds the remaining allowance is retained
+for the next turn; query work is still charged. Local read failure, remote query
+failure, invalid frames and invalidation remain distinct typed errors.
+
+This is one bounded operation, not a persistent runtime, SQL schema or causal
+repair engine. The lower-level interfaces remain appropriate for application
+checkpoints with specialized repair policy. Defaults create no timer or task.
+
 The runnable `sqlite_sync` example uses actual SQLite reads and atomic body
 transactions. It discards discovery state on failure/cancellation and reconstructs
 from committed records; it never persists a discovery cursor as a receipt. It

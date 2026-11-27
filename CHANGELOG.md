@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add bounded persistent-reader preparation with typed failures and commit-gated
+  checkpoint release; retain host-owned body verification, transactions and policy.
+
 - Share reader snapshot qualification and summary-frame admission with custom
   host checkpoints, without moving authorization or causal-repair policy.
 

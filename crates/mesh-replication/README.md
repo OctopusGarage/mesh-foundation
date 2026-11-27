@@ -6,7 +6,10 @@ Choose the entry point by workload:
 
 - Small, finite sets: `CompleteInventory` and `inventory_session`.
 - Indexed incremental repair: `driver::SyncDriver` with an in-memory `RangeIndex`.
-- Persistent indexes: `range::RangeRead` and caller-owned checkpoint/commit orchestration.
+- Persistent indexes: `reader::prepare` over `range::RangeRead`; prepared turns
+  release continuation only after the host's atomic commit callback succeeds.
+- Custom policy/causal checkpoints: `RangeRead`, `ReaderBinding` and frame
+  admission primitives, with application-owned repair and scheduling.
 - Recent/older pages: `history::fetch_page`; page exhaustion is not whole-scope equality.
 
 Run `cargo run -p mesh-foundation-replication --example sqlite_sync` for a real

@@ -182,3 +182,6 @@ pub mod driver;
 
 /// Recent-history pages with explicit source-local older-history continuation.
 pub mod history;
+
+/// Prepared, bounded persistent-reader discovery with commit-gated continuation.
+pub mod reader;

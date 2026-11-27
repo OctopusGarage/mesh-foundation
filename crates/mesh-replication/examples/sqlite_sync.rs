@@ -5,6 +5,7 @@
 use mesh_replication::{
     pull::Record,
     range::{Checkpoint, Prefix, RangeIndex, RangeRead, Summary, SummaryFrame},
+    reader::{self, ReaderLimits, ReaderSource},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
@@ -59,9 +60,14 @@ impl Store {
             revision: ids.len() as u64,
         })
     }
-    fn commit(&mut self, records: &[Record], allowed: bool, fail: bool) -> Result<()> {
+    fn commit(
+        &mut self,
+        records: &[Record],
+        authorize: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<bool>,
+        fail: bool,
+    ) -> Result<()> {
         let tx = self.db.transaction()?;
-        if !allowed {
+        if !authorize(&tx)? {
             return Err("authorization revoked".into());
         }
         for record in records {
@@ -141,27 +147,27 @@ async fn turn(
     if !authorize() {
         return Err("unauthorized".into());
     }
-    let snapshot = store.snapshot()?;
-    let mut checkpoint = Checkpoint::for_reader(SCOPE, AUTHORITY, &snapshot, remote.revision())?;
-    let mut missing = Vec::new();
-    for _ in 0..8 {
-        let Some(prefix) = checkpoint.next_query() else {
-            break;
-        };
-        let frame = query(prefix).await?;
-        if !authorize() {
-            return Err("authorization revoked".into());
-        }
-        missing.extend(
-            checkpoint
-                .accept_reader(&snapshot, SCOPE, VIEW, AUTHORITY, remote.revision(), frame)?
-                .map_err(|error| format!("invalid range: {error:?}"))?,
-        );
-    }
-    if missing.len() > 200 {
-        return Err("record allowance exhausted".into());
-    }
-    let bodies: Vec<_> = missing
+    let prepared = {
+        let snapshot = store.snapshot()?;
+        let checkpoint = Checkpoint::for_reader(SCOPE, AUTHORITY, &snapshot, remote.revision())?;
+        reader::prepare(
+            &checkpoint,
+            &snapshot,
+            ReaderSource {
+                scope: SCOPE,
+                authority: AUTHORITY,
+                view: VIEW,
+                revision: remote.revision(),
+            },
+            ReaderLimits::default(),
+            &mut authorize,
+            &mut query,
+        )
+        .await
+        .map_err(|error| format!("prepare: {error:?}"))?
+    };
+    let bodies: Vec<_> = prepared
+        .missing()
         .iter()
         .map(|id| {
             records
@@ -174,8 +180,11 @@ async fn turn(
     if bodies.iter().map(|r| r.body.len()).sum::<usize>() > 1024 * 1024 {
         return Err("byte allowance exhausted".into());
     }
-    store.commit(&bodies, authorize(), fail_commit)?;
-    Ok(bodies.len())
+    // Preparation retained no borrow of the database. Reauthorize within the
+    // actual write transaction; release its continuation only after commit.
+    let (_, difference) =
+        prepared.commit(|_| store.commit(&bodies, |_tx| Ok(authorize()), fail_commit))?;
+    Ok(difference.missing.len())
 }
 fn source() -> (RangeIndex, Vec<Record>) {
     let records: Vec<_> = [b"opaque first".as_slice(), b"opaque second".as_slice()]
@@ -321,6 +330,37 @@ mod tests {
             .is_err()
         );
         assert_eq!(cp.next_query(), prior);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod transaction_authority_tests {
+    use super::*;
+    #[test]
+    fn authorization_is_evaluated_in_the_write_transaction() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let mut store = Store::open(&directory.path().join("db"))?;
+        let (_, records) = source();
+        let checked = std::cell::Cell::new(false);
+        assert!(
+            store
+                .commit(
+                    &records,
+                    |tx| {
+                        assert!(
+                            !tx.is_autocommit(),
+                            "authorization must run in the active transaction"
+                        );
+                        checked.set(true);
+                        Ok(false)
+                    },
+                    false
+                )
+                .is_err()
+        );
+        assert!(checked.get());
+        assert_eq!(store.count()?, 0);
         Ok(())
     }
 }
