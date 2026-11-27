@@ -177,13 +177,29 @@ This is one bounded operation, not a persistent runtime, SQL schema or causal
 repair engine. The lower-level interfaces remain appropriate for application
 checkpoints with specialized repair policy. Defaults create no timer or task.
 
-The runnable `sqlite_sync` example uses actual SQLite reads and atomic body
-transactions. It discards discovery state on failure/cancellation and reconstructs
-from committed records; it never persists a discovery cursor as a receipt. It
-also demonstrates reopen without duplicate commits. Preparation deliberately
-rebuilds a small derived summary table once per turn: production hosts must budget
-initial preparation and maintain their own persistent index. The example is not
-a production schema, encrypted database, authenticated transport or signature policy.
+The runnable `sqlite_sync` example maintains compact leaf/branch summaries in
+actual SQLite transactions with bodies and the reader revision. Snapshot creation
+reads a metadata scalar; prefix queries use indexed endpoint seeks and canonical
+unary lifting, without collecting all IDs or rebuilding the tree per turn. For N
+records the derived table holds at most 2*N-1 rows. Tests pin read-only snapshot
+preparation, indexed lookup plans, canonical hashes, rollback, revocation,
+cancellation and idempotent reopen. The host retains navigation across no-body turns and returns
+explicit completion; a zero committed count is never treated as exhaustion.
+Changed reader versions restart from committed data. Inserts touch a fixed
+256-bit path; this is
+an append-only single-writer illustration, not a production schema, concurrent
+snapshot manager, encrypted database, deletion implementation or latency SLA.
+Earlier unindexed example databases require an explicit migration and are never
+silently treated as empty.
+
+For a custom persistent adapter, enable `test-observability` in a development
+dependency and call `test_support::check_reader` with a canonical `RangeIndex`,
+selected prefixes and present/absent ID probes. It checks sampled summaries,
+membership, read errors and revision stability; it does not certify all possible
+queries or authorization. The same bounded probe runs against the maintained
+SQLite example and the application's real SQL adapter. Add backend-specific
+transaction rejection/rollback, source retirement, cancellation and reopen tests;
+these remain host contracts, not generic application-policy test ports.
 
 Mesh Talk uses application-specific SQL selections and causal repair. Mesh Forum's
 production protocol currently uses its own post index/revision exchanges;

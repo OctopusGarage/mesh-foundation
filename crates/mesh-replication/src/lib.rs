@@ -185,3 +185,7 @@ pub mod history;
 
 /// Prepared, bounded persistent-reader discovery with commit-gated continuation.
 pub mod reader;
+
+/// Development-only conformance probes for custom persistent reader adapters.
+#[cfg(any(test, feature = "test-observability"))]
+pub mod test_support;

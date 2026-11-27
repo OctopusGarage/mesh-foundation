@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Maintain the SQLite reference index transactionally without per-turn rebuilding;
+  share compressed-prefix mathematics and opt-in development reader conformance probes.
+
 - Add bounded persistent-reader preparation with typed failures and commit-gated
   checkpoint release; retain host-owned body verification, transactions and policy.
 
