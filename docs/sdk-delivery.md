@@ -175,7 +175,8 @@ python3 scripts/sdk.py snapshot verify ../mesh-talk/vendor/mesh-foundation --sou
 ```
 
 Export requires a clean, committed SDK checkout and records its full SHA in
-`SOURCE`. `SNAPSHOT.json` covers the managed Cargo manifest, README, licenses,
+`SOURCE`. A bundled `.gitattributes` preserves LF bytes even in consumers using
+`core.autocrlf`; verification compares raw source bytes. `SNAPSHOT.json` covers the managed Cargo manifest, README, licenses,
 crate sources/tests/examples and the standalone verifier. Updates refuse changed,
 extra, missing or symlinked destination files. An older SOURCE-only snapshot is
 adopted only after exact comparison with its recorded Git commit. Commit the

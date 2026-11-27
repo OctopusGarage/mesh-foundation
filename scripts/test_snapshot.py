@@ -86,3 +86,18 @@ class SnapshotTests(unittest.TestCase):
         destination = self.source.resolve() / '..' / 'sibling'
         snapshot.export_snapshot(self.source, destination)
         snapshot.verify_snapshot(destination, self.source)
+
+    def test_consumer_checkout_preserves_snapshot_bytes_with_autocrlf(self):
+        (self.source / '.gitattributes').write_text('* text=auto eol=lf\n')
+        self.commit()
+        consumer = self.root / 'consumer'
+        consumer.mkdir()
+        self.dest = consumer / 'vendor' / 'sdk'
+        snapshot.export_snapshot(self.source, self.dest)
+        def git(*args):
+            return subprocess.check_output(['git', '-C', str(consumer), *args])
+        git('init', '-q');git('config', 'user.email', 'test@example.invalid');git('config', 'user.name', 'test')
+        git('add', '-A');git('commit', '-qm', 'snapshot')
+        checkout = self.root / 'checkout'
+        subprocess.check_call(['git', '-c', 'core.autocrlf=true', 'clone', '-q', str(consumer), str(checkout)])
+        snapshot.verify_snapshot(checkout / 'vendor/sdk', self.source)
