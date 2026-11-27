@@ -42,39 +42,39 @@ class ArchitectureTests(unittest.TestCase):
     def test_no_application_protocol_in_production_sources(self):
         offenders = []
         for path in (ROOT / 'crates').glob('*/src/**/*.rs'):
-            if application_protocol_hits(path.relative_to(ROOT / 'crates').as_posix(), path.read_text()):
+            if application_protocol_hits(path.relative_to(ROOT / 'crates').as_posix(), path.read_text(encoding="utf-8")):
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual(offenders, [], 'application protocols belong to consumer repositories')
 
     def test_no_application_dependencies_or_legacy_feature(self):
         for path in [ROOT / 'Cargo.toml', *(ROOT / 'crates').glob('*/Cargo.toml')]:
-            source = path.read_text()
+            source = path.read_text(encoding="utf-8")
             self.assertEqual(application_dependencies(tomllib.loads(source)), [], path)
             self.assertNotIn('legacy-wire', source, path)
-        replication = (ROOT / 'crates/mesh-replication/Cargo.toml').read_text()
+        replication = (ROOT / 'crates/mesh-replication/Cargo.toml').read_text(encoding="utf-8")
         self.assertIn('default = []', replication)
 
     def test_mailbox_has_no_production_identity_dependency(self):
-        source = (ROOT / 'crates/mesh-mailbox/Cargo.toml').read_text().split('[dev-dependencies]')[0]
+        source = (ROOT / 'crates/mesh-mailbox/Cargo.toml').read_text(encoding="utf-8").split('[dev-dependencies]')[0]
         self.assertNotIn('mesh-identity', source)
         self.assertNotIn('legacy', source)
 
     def test_identity_does_not_own_lifecycle_or_wall_clock(self):
-        source = (ROOT / 'crates/mesh-identity/src/account.rs').read_text()
+        source = (ROOT / 'crates/mesh-identity/src/account.rs').read_text(encoding="utf-8")
         self.assertNotIn('SystemTime', source)
         self.assertNotIn('MAX_ACCOUNT_CREATED_AT_MS', source)
         self.assertNotRegex(source, r'pub\s+fn\s+(?:created_at_ms|from_secret_bytes_with_created_at)\b')
 
     def test_mailbox_mechanisms_do_not_import_profiles(self):
         for name in ['model', 'ports', 'client', 'delta']:
-            source = (ROOT / f'crates/mesh-mailbox/src/{name}.rs').read_text()
+            source = (ROOT / f'crates/mesh-mailbox/src/{name}.rs').read_text(encoding="utf-8")
             self.assertNotRegex(source, r'(?:crate::(?:rpc|wire|spool|service)|bincode|mesh_storage|BODY_BUDGET|MAX_PLAINTEXT)')
-        model = (ROOT / 'crates/mesh-mailbox/src/model.rs').read_text()
+        model = (ROOT / 'crates/mesh-mailbox/src/model.rs').read_text(encoding="utf-8")
         self.assertNotIn('first_seen', model)
         self.assertNotIn('expires_at', model)
 
     def test_crypto_exposes_explicit_recovery_not_application_policy(self):
-        source = (ROOT / 'crates/mesh-e2ee/src/sender_key.rs').read_text()
+        source = (ROOT / 'crates/mesh-e2ee/src/sender_key.rs').read_text(encoding="utf-8")
         self.assertNotRegex(source, r'pub\s+fn\s+refresh_distribution\b')
         self.assertIn('pub fn prepare_rebase', source)
 
