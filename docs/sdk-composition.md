@@ -136,3 +136,30 @@ source location; new references on that line still fail. These checks catch know
 regressions, not arbitrary application semantics. Semantic review and independent
 consumer tests remain necessary. See the E2EE crate README for the retained
 cryptographic compatibility profile.
+
+## Persistent synchronization composition
+
+The high-level `SyncDriver` currently owns an in-memory `RangeIndex`. SQL hosts
+can implement `RangeRead` and use `Checkpoint::for_reader`/`accept_reader` without
+materializing a tree on each query. `Summary::{empty,leaf,combine}` and
+`singleton_summary` define the same canonical hashes for independent index writers.
+The host owns SQL transactions, snapshot qualification, commit atomicity and
+scheduling. Keep policy/causal recovery outside this shared mathematical kernel.
+
+The runnable `sqlite_sync` example uses actual SQLite reads and atomic body
+transactions. It discards discovery state on failure/cancellation and reconstructs
+from committed records; it never persists a discovery cursor as a receipt. It
+also demonstrates reopen without duplicate commits. Preparation deliberately
+rebuilds a small derived summary table once per turn: production hosts must budget
+initial preparation and maintain their own persistent index. The example is not
+a production schema, encrypted database, authenticated transport or signature policy.
+
+Mesh Talk uses application-specific SQL selections and causal repair. Mesh Forum's
+production protocol currently uses its own post index/revision exchanges;
+its generic inventory and private mailbox compositions are integration tests.
+These are independent-consumer evidence, not proof that every production path
+uses the high-level driver. Preserve that distinction when describing maturity.
+
+The optional blob session adapter intentionally uses mesh-connect framing and
+errors. Use the transport-independent chunk interfaces for other carriers; extend
+the session port only when a real additional carrier needs it.

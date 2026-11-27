@@ -122,10 +122,10 @@ rejection.
 | Package | Responsibility | Extraction status |
 | --- | --- | --- |
 | `mesh-connect` | Authenticated frame sessions, LAN discovery, route selection and connection lifecycle | Pinned-key sessions, LAN/IPv6 sockets, signed discovery codecs and candidate selection available. Hosts own routing configuration and relay coordination. |
-| `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory, exact differences, bounded requester and responder, and legacy wire codec available. Applications supply authorized persistence via adapters. |
+| `mesh-replication` | Scoped event inventories, bounded reconciliation, resumable export and import | Inventory, exact differences, bounded requester and responder, and generic session codecs available. Applications supply authorized persistence via adapters. |
 | `mesh-e2ee` | Content encryption state machines and checkpoint codecs | Pairwise ratchets, group sender keys and checkpoints available. In-memory installation rejects stale candidates. Hosts own key distribution and must compare the persisted checkpoint before committing a durable candidate. |
 | `mesh-identity` | Signing, credential verification, and separate node and author identities | Device and account identities plus device certificate verification available. Account trust, enrollment and recovery policy belong to the application. |
-| `mesh-storage` | Durable transaction and checkpoint adapters, including encrypted local storage | Record encryption and durable append/rewrite available. Applications own indexed data models and profile lifecycle. |
+| `mesh-storage` | Encrypted record framing, durable append and atomic replacement | Record encryption and durable append/rewrite available. Applications own indexed data models and profile lifecycle. |
 | `mesh-mailbox` | Opaque scoped deposits, bounded retrieval and configurable storage | Typed store/transport ports and budgeted synchronization are independent of optional wire/spool profiles. Hosts own authentication, retention policy, scheduling and federation. |
 | `mesh-blob` | Content verification, bounded chunk transfer and resumable retrieval | Chunk cryptography and ordered stream verification available. Hosts stage bytes until verification succeeds and own transfer scheduling, manifests, consent and retention. |
 

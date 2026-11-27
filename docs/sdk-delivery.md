@@ -163,3 +163,32 @@ workflow does not upload Cargo packages.
 [release research](release-research.md), [launch checklist](open-source-checklist.md).
 
 Current candidate verification: [alpha release record](alpha-release-verification.md).
+
+## Managed source snapshots
+
+Git or registry dependencies are usually simplest. A consumer that vendors a
+reviewed SDK can use the existing delivery tool instead of copying files by hand:
+
+```sh
+python3 scripts/sdk.py snapshot export ../mesh-talk/vendor/mesh-foundation
+python3 scripts/sdk.py snapshot verify ../mesh-talk/vendor/mesh-foundation --source .
+```
+
+Export requires a clean, committed SDK checkout and records its full SHA in
+`SOURCE`. `SNAPSHOT.json` covers the managed Cargo manifest, README, licenses,
+crate sources/tests/examples and the standalone verifier. Updates refuse changed,
+extra, missing or symlinked destination files. An older SOURCE-only snapshot is
+adopted only after exact comparison with its recorded Git commit. Commit the
+consumer snapshot and lockfile together and run its affected acceptance checks.
+
+Consumer CI can verify bytes offline without credentials or a sibling checkout:
+
+```sh
+python3 vendor/mesh-foundation/scripts/sdk_snapshot.py verify vendor/mesh-foundation
+```
+
+Offline digests detect drift, not a maliciously rewritten manifest. Use `--source`
+with the reviewed SDK Git checkout to verify provenance against the recorded
+commit. Export builds and verifies a staged directory before replacing an existing
+verified snapshot; keep ordinary Git recovery for interrupted updates. Do not
+modify the managed copy; change the SDK, commit, export, and verify the consumer.

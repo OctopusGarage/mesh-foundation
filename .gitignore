@@ -2,3 +2,6 @@
 /build-red.log
 
 __pycache__/
+
+# Local implementation plans and validation output.
+/tmp/

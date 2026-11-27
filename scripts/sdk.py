@@ -38,7 +38,20 @@ def main():
     check.add_argument("--tag")
     patch = commands.add_parser("patch")
     patch.add_argument("--source", choices=["git", "crates-io"], default="git")
+    snapshot = commands.add_parser("snapshot", help="export or verify a committed SDK snapshot")
+    snapshot.add_argument("action", choices=["export", "verify"])
+    snapshot.add_argument("destination", type=Path)
+    snapshot.add_argument("--source", type=Path)
     args = parser.parse_args()
+    if args.command == "snapshot":
+        import sdk_snapshot
+        try:
+            revision = (sdk_snapshot.export_snapshot(args.source or ROOT, args.destination)
+                        if args.action == "export" else sdk_snapshot.verify_snapshot(args.destination, args.source))
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            parser.error(str(error))
+        print(f"Verified SDK snapshot {revision}")
+        return
     metadata = json.loads(subprocess.check_output(
         ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
         cwd=ROOT,
