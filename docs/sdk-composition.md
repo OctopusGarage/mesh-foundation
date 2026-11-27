@@ -143,6 +143,11 @@ The high-level `SyncDriver` currently owns an in-memory `RangeIndex`. SQL hosts
 can implement `RangeRead` and use `Checkpoint::for_reader`/`accept_reader` without
 materializing a tree on each query. `Summary::{empty,leaf,combine}` and
 `singleton_summary` define the same canonical hashes for independent index writers.
+Custom checkpoints can use `ReaderBinding::valid_reader` for scope, authority,
+root/revision and pinned-view qualification, and `SummaryFrame::validate_for`
+for frontier/frame admission. These checks do not mutate progress or grant access;
+read errors remain distinct from invalidation. Read all required facts before
+advancing a checkpoint, and retain or discard discovered work with its commit.
 The host owns SQL transactions, snapshot qualification, commit atomicity and
 scheduling. Keep policy/causal recovery outside this shared mathematical kernel.
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Share reader snapshot qualification and summary-frame admission with custom
+  host checkpoints, without moving authorization or causal-repair policy.
+
 - Share finite-window pagination across host-owned cursors and record IDs while
   retaining the neutral mailbox convenience types and serialized page layout.
 - Add checked depth-only range summary composition for persistent adapters.
