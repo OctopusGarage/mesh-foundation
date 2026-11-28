@@ -1,0 +1,15 @@
+name: Proposal or integration question
+description: Discuss an API improvement, use case or integration
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and context
+      description: Which crate and application requirement are involved?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach and alternatives
+      description: Include compatibility or security implications where relevant.

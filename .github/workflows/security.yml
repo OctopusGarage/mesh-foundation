@@ -1,0 +1,27 @@
+name: Dependency security
+on:
+  pull_request:
+    paths: [Cargo.toml, Cargo.lock, 'crates/**/Cargo.toml', .github/workflows/security.yml]
+  push:
+    branches: [main]
+    paths: [Cargo.toml, Cargo.lock, 'crates/**/Cargo.toml', .github/workflows/security.yml]
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install repository toolchain
+        run: rustup show active-toolchain
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.23.0 --locked --no-default-features
+      - name: Check RustSec advisories
+        run: cargo audit
